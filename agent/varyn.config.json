@@ -1,0 +1,209 @@
+{
+  "runtime": {
+    "backend_host": "127.0.0.1",
+    "backend_port": 8788,
+    "frontend_port": 3200
+  },
+  "provider": {
+    "primary_model": "openai/gpt-oss-20b:free",
+    "model_chain": [
+      "openai/gpt-oss-20b:free",
+      "openai/gpt-oss-120b:free",
+      "qwen/qwen3-next-80b-a3b-instruct:free",
+      "openrouter/free"
+    ],
+    "fallback_model": "openrouter/free",
+    "timeout_seconds": 8,
+    "retries_per_model": 1,
+    "backoff_seconds": 0.35,
+    "max_attempts_total": 5,
+    "max_total_seconds": 42,
+    "catalog_timeout_seconds": 4,
+    "catalog_cache_seconds": 86400,
+    "max_agent_steps": 5
+  },
+  "voice": {
+    "input_mode": "push-to-talk",
+    "push_to_talk_key": "Space",
+    "open_mic_enabled": true,
+    "choice": "Microsoft Andrew Multilingual Online (Natural)",
+    "preferred_voices": [
+      "Microsoft Andrew Multilingual Online (Natural)",
+      "Microsoft Ava Multilingual Online (Natural)",
+      "Microsoft Brian Multilingual Online (Natural)",
+      "Microsoft Ava Online (Natural)",
+      "Microsoft Emma Online (Natural)",
+      "Microsoft Andrew Online (Natural)",
+      "Microsoft Brian Online (Natural)",
+      "Microsoft Aria Online (Natural)"
+    ],
+    "rate": 0.96,
+    "pitch": 0.99,
+    "sentence_pause_ms": 280,
+    "paragraph_pause_ms": 560,
+    "test_utterance": "Varyn voice online.",
+    "stt_provider": "browser-web-speech",
+    "tts_provider": "browser-speech-synthesis",
+    "optional_local_seams": {
+      "enabled": false,
+      "stt": "whisper",
+      "tts": "piper"
+    },
+    "stop_commands": [
+      "stop",
+      "stop speaking",
+      "stop talking",
+      "be quiet",
+      "silence",
+      "cancel",
+      "pause",
+      "enough",
+      "shut up",
+      "cancel speech",
+      "pause speech"
+    ]
+  },
+  "safety": {
+    "confirmation_expiry_seconds": 600,
+    "confirmation_required_actions": [
+      "remember_fact",
+      "update_fact",
+      "forget_fact",
+      "clear_file_context",
+      "reset_session",
+      "delete_data",
+      "write_external_file",
+      "export_data",
+      "send_external",
+      "change_configuration",
+      "system_command",
+      "desktop_command",
+      "export_risk_memo"
+    ],
+    "action_descriptions": {
+      "remember_fact": "Write a new durable memory fact: {statement}",
+      "update_fact": "Modify durable memory fact {fact_id}.",
+      "forget_fact": "Delete durable memory fact {fact_id}.",
+      "clear_file_context": "Clear the active uploaded-file context for this browser session.",
+      "reset_session": "Delete this browser session's recent conversation and active-file context.",
+      "delete_data": "Delete local Varyn data.",
+      "write_external_file": "Write or modify a file outside the approved Varyn upload scope.",
+      "export_data": "Export local Varyn data from the machine.",
+      "send_external": "Send user data to an external destination.",
+      "change_configuration": "Change Varyn configuration or provider settings.",
+      "system_command": "Run a terminal or system command.",
+      "desktop_command": "Control or modify a desktop application.",
+      "export_risk_memo": "Create an audit-ready Markdown and HTML risk memo in Varyn's local memo folder."
+    },
+    "untrusted_instruction_patterns": [
+      "ignore (all |any )?(previous|prior|system|developer|safety) (instructions|rules|prompts)",
+      "(delete|erase|remove|destroy) (all |the )?(data|files|memory|logs)",
+      "(run|execute|launch) (this |the )?(command|script|powershell|terminal|shell)",
+      "(send|upload|email|exfiltrate) .*?(data|file|secret|key|password)",
+      "reveal .*?(api key|secret|password|system prompt)",
+      "you must (now )?(obey|follow|execute|ignore)"
+    ]
+  },
+  "audit": {
+    "path": "data/audit/varyn-audit.jsonl",
+    "max_recent_entries": 2000
+  },
+  "risk_memo": {
+    "output_directory": "data/memos",
+    "formats": ["markdown", "html"],
+    "pdf_export": "planned-fast-follow"
+  },
+  "proactive": {
+    "default_paused": false
+  },
+  "heartbeat": {
+    "enabled": true,
+    "interval_seconds": 300,
+    "check_timeout_seconds": 90,
+    "initial_delay_seconds": 8,
+    "watchlist": [
+      "TSLA",
+      "F",
+      "GM",
+      "NVDA",
+      "JPM",
+      "BAC",
+      "MTB"
+    ],
+    "market_stress_symbols": [
+      "^GSPC",
+      "XLF"
+    ],
+    "thresholds": {
+      "intraday_move_percent": 5.0,
+      "five_day_move_percent": 8.0,
+      "critical_move_percent": 10.0,
+      "market_stress_move_percent": 4.0,
+      "risk_score": 70,
+      "critical_risk_score": 80,
+      "risk_score_increase": 5
+    },
+    "quiet_hours": {
+      "start": "22:00",
+      "end": "08:00"
+    },
+    "history_limit": 100,
+    "notice_limit": 100
+  },
+  "sp500": {
+    "enabled": true,
+    "constituents_file": "data/sp500.json",
+    "snapshot_file": "data/sp500_snapshot.json",
+    "refresh_interval_seconds": 600,
+    "batch_size": 40,
+    "batch_delay_seconds": 6,
+    "initial_delay_seconds": 15,
+    "ticker_window_size": 28,
+    "ticker_window_seconds": 38,
+    "max_stale_seconds": 1800
+  },
+  "data_layer": {
+    "enabled": true,
+    "store_directory": "data/market_store",
+    "stooq_validation_interval_seconds": 3600,
+    "agreement_tolerance_percent": 0.5,
+    "minor_difference_percent": 2.0,
+    "watchlist_refresh_frequency_seconds": 300,
+    "sp500_refresh_frequency_seconds": 600
+  },
+  "sec_edgar": {
+    "enabled": true,
+    "user_agent": "Varyn Risk Intelligence/0.1 (local educational research; contact: abubakrjallow.vercel.app)",
+    "ticker_cik_file": "data/sec_ticker_cik.json",
+    "ticker_cik_cache_file": "data/sec_edgar/company_tickers.json",
+    "mapping_refresh_seconds": 2592000,
+    "metadata_refresh_seconds": 86400,
+    "fundamentals_refresh_seconds": 604800,
+    "stale_after_seconds": 34560000,
+    "request_interval_seconds": 0.5,
+    "request_timeout_seconds": 20,
+    "fundamental_disagreement_percent": 10.0
+  },
+  "fred": {
+    "enabled": true,
+    "snapshot_file": "data/fred/macro_snapshot.json",
+    "schedule_file": "data/fred/schedule.json",
+    "refresh_interval_seconds": 21600,
+    "request_interval_seconds": 0.25,
+    "request_timeout_seconds": 20,
+    "observation_limit": 12,
+    "series": [
+      { "id": "DFF", "name": "Federal Funds Effective Rate", "frequency": "daily", "unit": "percent" },
+      { "id": "DGS10", "name": "10-Year Treasury Yield", "frequency": "daily", "unit": "percent" },
+      { "id": "DGS2", "name": "2-Year Treasury Yield", "frequency": "daily", "unit": "percent" },
+      { "id": "T10Y2Y", "name": "10Y-2Y Treasury Spread", "frequency": "daily", "unit": "percentage points" },
+      { "id": "CPIAUCSL", "name": "Consumer Price Index", "frequency": "monthly", "unit": "index" },
+      { "id": "CPILFESL", "name": "Core Consumer Price Index", "frequency": "monthly", "unit": "index" },
+      { "id": "UNRATE", "name": "Unemployment Rate", "frequency": "monthly", "unit": "percent" },
+      { "id": "ICSA", "name": "Initial Jobless Claims", "frequency": "weekly", "unit": "claims" },
+      { "id": "GDP", "name": "Gross Domestic Product", "frequency": "quarterly", "unit": "billions USD" },
+      { "id": "INDPRO", "name": "Industrial Production Index", "frequency": "monthly", "unit": "index" },
+      { "id": "UMCSENT", "name": "Consumer Sentiment", "frequency": "monthly", "unit": "index" }
+    ]
+  }
+}
