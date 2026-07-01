@@ -118,6 +118,26 @@ function pushToTalkKeyLabel(code) {
   return code.replace(/^Key/, "").replace(/^Digit/, "");
 }
 
+function downloadMemoArtifact(artifact) {
+  if (!artifact?.content || artifact.encoding !== "base64") {
+    throw new Error("This memo format is not available for browser download.");
+  }
+  const binary = window.atob(artifact.content);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const blob = new Blob([bytes], { type: artifact.mime_type || "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = artifact.filename || `varyn-risk-memo.${artifact.format || "bin"}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export default function Home() {
   const [activeAnalysis, setActiveAnalysis] = useState(null);
   const [agentReply, setAgentReply] = useState("");
@@ -127,6 +147,7 @@ export default function Home() {
   const [heardTranscript, setHeardTranscript] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [listening, setListening] = useState(false);
+  const [memoArtifacts, setMemoArtifacts] = useState([]);
   const [openMicAvailable, setOpenMicAvailable] = useState(true);
   const [openMicEnabled, setOpenMicEnabled] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -424,6 +445,7 @@ export default function Home() {
       lastCommandRef.current = { text: cleanInput, time: now };
 
       setCommand("");
+      setMemoArtifacts([]);
       if (source === "voice") setHeardTranscript(cleanInput);
       setVoiceError("");
       setProcessing(true);
@@ -521,6 +543,7 @@ export default function Home() {
 
         const hasAnalysis = data.mode === "analysis" && isMeaningfulAnalysis(data.analysis);
         setAgentReply(data.reply || streamedReply);
+        setMemoArtifacts(Array.isArray(data.artifacts) ? data.artifacts : []);
         setPendingConfirmation(data.confirmation || null);
         setActiveAnalysis(hasAnalysis ? data.analysis : null);
         setStatus(data.status || data.provider || "Local agent");
@@ -961,6 +984,9 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || "Confirmation could not be resolved.");
       setPendingConfirmation(null);
       setAgentReply(data.reply || (decision === "approve" ? "Approved action completed." : "Action denied."));
+      if (action === "export_risk_memo") {
+        setMemoArtifacts(decision === "approve" && Array.isArray(data.artifacts) ? data.artifacts : []);
+      }
       setStatus(data.status || "Online");
       (data.events || []).forEach((event) => addLog({ type: event.type, label: event.label }));
       if (decision === "approve" && action === "clear_file_context") {
@@ -970,6 +996,7 @@ export default function Home() {
       if (decision === "approve" && action === "reset_session") {
         setActiveAnalysis(null);
         setCommand("");
+        setMemoArtifacts([]);
         setSelectedFile(null);
         setSessionId(createSessionId());
         setSystem((current) => ({ ...current, agent: "Standby", memory: "Active", risk: "Active", market: "Active" }));
@@ -1609,6 +1636,30 @@ export default function Home() {
           <div ref={responseBoxRef} className={`response-box ${processing ? "is-pending" : ""}`}>
             {agentReply ? cleanDisplayText(agentReply) : "Awaiting command input."}
           </div>
+          {memoArtifacts.length > 0 && (
+            <div className="memo-downloads" aria-label="Risk memo downloads">
+              <span>Download memo</span>
+              <div>
+                {memoArtifacts.map((artifact) => (
+                  <button
+                    key={`${artifact.format}-${artifact.filename}`}
+                    onClick={() => {
+                      try {
+                        downloadMemoArtifact(artifact);
+                        addLog({ type: "system", label: `${artifact.format.toUpperCase()} memo downloaded` });
+                      } catch (error) {
+                        setAgentReply(error.message || "The memo download could not be prepared.");
+                        addLog({ type: "error", label: "Memo download failed" });
+                      }
+                    }}
+                    type="button"
+                  >
+                    {artifact.format === "markdown" ? "MD" : artifact.format.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <button
             className={`file-zone ${selectedFile?.ready ? "file-ready" : ""}`}
             onClick={openFilePicker}

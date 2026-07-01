@@ -93,7 +93,7 @@
       "change_configuration": "Change Varyn configuration or provider settings.",
       "system_command": "Run a terminal or system command.",
       "desktop_command": "Control or modify a desktop application.",
-      "export_risk_memo": "Create an audit-ready Markdown and HTML risk memo in Varyn's local memo folder."
+      "export_risk_memo": "Create an audit-ready Markdown, HTML, and PDF risk memo for immediate browser download, with optional local audit copies."
     },
     "untrusted_instruction_patterns": [
       "ignore (all |any )?(previous|prior|system|developer|safety) (instructions|rules|prompts)",
@@ -110,8 +110,9 @@
   },
   "risk_memo": {
     "output_directory": "data/memos",
-    "formats": ["markdown", "html"],
-    "pdf_export": "planned-fast-follow"
+    "formats": ["markdown", "html", "pdf"],
+    "delivery": "in-memory-base64",
+    "local_audit_copies": true
   },
   "proactive": {
     "default_paused": false

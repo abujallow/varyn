@@ -45,11 +45,12 @@ files, never in code or chat.
     agent path; heard text is visible beside the response.
   - Recognition pauses during speech output, push-to-talk interrupts a reply, and failed or empty
     captures remain local and never reach the agent.
-- **Tier 7, feature 1** (exportable single-company risk memo in Markdown + HTML) — DONE
+- **Tier 7, feature 1** (exportable single-company risk memo in Markdown + HTML + PDF) — DONE
   - Deterministic yfinance, SEC EDGAR, FRED, and local risk-engine evidence is separated from the
     optional provider narrative, with source/date/confidence provenance on every quantitative row.
   - Export is protected by the Tier 5 per-action confirmation gate and recorded in the persistent
-    audit trail. PDF export is a planned fast-follow and was not built in this pass.
+    audit trail. All three formats are delivered to the HUD for immediate browser download; local
+    files are optional audit copies and are not required for delivery.
 - **Provider-resilience hardening** (free OpenRouter multi-model chain) — DONE
   - Catalog-validated free models, bounded retries/backoff, quiet failover, actual-model HUD
     reporting, persistent diagnostics, and full-chain local degradation are implemented behind the
@@ -90,9 +91,9 @@ already exists), so they come AFTER the tiers.
 3. **Tier 6 — voice reliability hardening (free, browser-based) — DONE:** push-to-talk default,
    keep the typed path alive, visible transcript, don't-listen-to-itself, let-me-interrupt.
    Optional free local seams (Whisper / Piper) only as non-required upgrades.
-4. **Tier 7 — beyond the baseline (stretch):** exportable risk memo (Markdown + HTML) — DONE;
-   PDF fast-follow, richer fundamentals, real document intelligence, glanceable face, and
-   always-on home remain unstarted.
+4. **Tier 7 — beyond the baseline (stretch):** exportable risk memo (Markdown + HTML + PDF with
+   in-browser download) — DONE; richer fundamentals, real document intelligence, glanceable face,
+   and always-on home remain unstarted.
 5. **Data-layer Phase 2 — SEC EDGAR** (official fundamentals/filings; keyless) — DONE.
 6. **Data-layer Phase 3 — FRED** (macro/risk context; free API key, no cost) — DONE.
 7. **Data-layer Phase 4 — supplemental APIs** (Alpha Vantage / Finnhub / FMP; free tiers, used
@@ -350,8 +351,8 @@ reliable sources.
   SEC EDGAR, and FRED sources, and the Markdown/HTML memo capability. Python compilation, ESLint,
   and the Next.js production build pass; prior heartbeat, telemetry, memory, S&P ticker, rails,
   analysis, SEC, and FRED behavior remains unchanged.
-- **PDF export is a planned fast-follow.** No PDF implementation, other Tier 7 feature, Phase 4,
-  or news-layer work was started.
+- PDF export and browser delivery were completed in a later focused pass. No other Tier 7 feature,
+  Phase 4, or news-layer work was started.
 
 ### Voice pacing and emerald visual refinement
 
@@ -466,7 +467,7 @@ registered) and lint/build passing after every item. Free and local always.
 ### Tier 7 memo polish and self-knowledge verification
 
 - Memo presentation now formats timestamps as human-readable UTC date-times and filing/observation
-  dates as human-readable calendar dates in both Markdown and HTML. Raw ISO values remain unchanged
+  dates as human-readable calendar dates in Markdown, HTML, and PDF. Raw ISO values remain unchanged
   in caches, tool payloads, filenames, and audit records.
 - Added a deterministic pre-export provenance validator. Every available quantitative evidence row
   must carry a source, relevant date, and High/Medium/Low/Flagged confidence; unavailable rows must
@@ -482,8 +483,25 @@ registered) and lint/build passing after every item. Free and local always.
   `Yes, I’m connected through OpenRouter as the current reasoning provider.` Varyn no longer claims
   that conversational reasoning is fully local or independent of OpenRouter.
 - Recorded **Bank/financial-institution-specific fundamentals mapping** as a future enhancement only.
-  No bank-specific SEC mapping, Phase 4, news layer, PDF export, or other Tier 7 feature was built.
+  No bank-specific SEC mapping, Phase 4, news layer, or other Tier 7 feature was built.
 - `/health` reports OpenRouter configured, the free fallback chain, all eight registered tools, the
   memo capability, and active yfinance/SEC/FRED sources. Python compilation, ESLint, and the Next.js
   production build pass; all prior heartbeat, telemetry, memory, ticker, source-health, rails,
   analysis, voice, provider-resilience, and memo behavior remains intact.
+
+### Tier 7 PDF and browser-delivery verification
+
+- Added ReportLab PDF generation with the same deterministic market, SEC EDGAR, FRED, structured
+  risk, Analyst Narrative, and provenance sections as the existing Markdown and HTML memo.
+- ReportLab `4.2.5` was verified as a prebuilt pure-Python wheel for Linux CPython 3.11. A rendered
+  two-page landscape memo passed visual inspection with readable tables, page numbers, separated
+  interpretation, and no clipping or overlap.
+- Approved exports return Markdown, HTML, and PDF as base64 response artifacts with filename, MIME
+  type, and size. The HUD exposes MD / HTML / PDF controls that create local browser Blob downloads;
+  no user-facing response contains a Render container path.
+- Local memo writes remain optional audit copies. A forced ephemeral-disk failure still returned all
+  three browser artifacts and recorded the failed local-copy status in the persistent audit event.
+- The Tier 5 per-action confirmation gate remains unchanged and still executes before generation.
+  Delivery failure is reported plainly, without presenting an inaccessible server path.
+- Python compilation, ESLint, and the Next.js production build pass. Phase 4, the news layer,
+  bank-specific fundamentals, and all other Tier 7 features remain unstarted.

@@ -142,3 +142,16 @@ Each tier must preserve the current working baseline and pass its verification b
 - Added support for the tagged tool-call format emitted by some free OpenRouter models so internal tool markup is parsed instead of displayed in the HUD.
 - Verified 503 cached constituents, seven pinned watchlist symbols, 28 rotating broader symbols, per-cycle deduplication, uniform ticker styling, KO cache lookup, durable memory, structured Tesla analysis, OpenRouter/tool health, psutil telemetry, Python compilation, lint, production build, viewport anchoring, and a clean browser console.
 - Tier 5 remains not started.
+
+## Tier 7 Risk Memo Delivery
+
+- A single-company risk memo is available in Markdown, HTML, and PDF after the existing exact-action
+  confirmation gate is approved.
+- Each format is generated in memory and returned as a browser-download artifact. The HUD provides
+  MD, HTML, and PDF download controls, so hosted deployments never expose or depend on a server path.
+- ReportLab generates the PDF with deterministic evidence tables, a clearly separated Analyst
+  Narrative, and source/date/confidence provenance for each quantitative figure.
+- Local files under `agent/data/memos/` are optional audit copies only. Ephemeral-disk failure does
+  not prevent browser delivery, and local-copy status remains recorded in the persistent audit log.
+- If browser artifact preparation fails, Varyn states that plainly and never offers an inaccessible
+  container path as though it were a usable download.

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import html
+import io
 import json
 import re
 from datetime import datetime, timezone
@@ -61,15 +63,17 @@ def prepare_memo_arguments(arguments: dict) -> dict:
         "generated_at": generated_at.isoformat(),
         "markdown_path": str(MEMO_DIR / f"{base_name}.md"),
         "html_path": str(MEMO_DIR / f"{base_name}.html"),
+        "pdf_path": str(MEMO_DIR / f"{base_name}.pdf"),
+        "base_name": base_name,
     }
 
 
 def memo_confirmation_description(arguments: dict) -> str:
     prepared = prepare_memo_arguments(arguments)
     return (
-        f"Create an audit-ready risk memo for {prepared['symbol']} as two local files: "
-        f"{prepared['markdown_path']} and {prepared['html_path']}. No file will be written "
-        "until this exact action is approved."
+        f"Generate an audit-ready risk memo for {prepared['symbol']} in Markdown, HTML, and PDF "
+        "and make all three formats available for immediate browser download. Optional local audit "
+        "copies may also be written. Nothing will be generated until this exact action is approved."
     )
 
 
@@ -86,6 +90,7 @@ def export_risk_memo(
     generated_at = prepared["generated_at"]
     markdown_path = trusted_memo_path(prepared["markdown_path"])
     html_path = trusted_memo_path(prepared["html_path"])
+    pdf_path = trusted_memo_path(prepared["pdf_path"])
 
     market = fetch_market_context(symbol, prefer_cache=False)
     fundamentals = (market or {}).get("official_fundamentals") or get_official_fundamentals(symbol)
@@ -107,8 +112,23 @@ def export_risk_memo(
     report["narrative_model"] = narrative_model
     validate_provenance(report)
 
-    write_text_atomic(markdown_path, render_markdown(report))
-    write_text_atomic(html_path, render_html(report))
+    markdown_content = render_markdown(report)
+    html_content = render_html(report)
+    pdf_content = render_pdf(report)
+
+    artifacts, delivery_errors = build_download_artifacts(
+        prepared["base_name"],
+        markdown_content,
+        html_content,
+        pdf_content,
+    )
+    local_copies = persist_optional_audit_copies(
+        (
+            ("markdown", markdown_path, markdown_content.encode("utf-8")),
+            ("html", html_path, html_content.encode("utf-8")),
+            ("pdf", pdf_path, pdf_content),
+        )
+    )
 
     sources = sorted(
         {
@@ -128,8 +148,10 @@ def export_risk_memo(
             "symbol": symbol,
             "generated_at": generated_at,
             "sources": sources,
-            "markdown_path": str(markdown_path),
-            "html_path": str(html_path),
+            "local_audit_copies": local_copies,
+            "download_formats": [artifact["format"] for artifact in artifacts],
+            "delivery_status": delivery_status(artifacts),
+            "delivery_errors": delivery_errors,
             "narrative_status": narrative_status,
             "narrative_model": narrative_model,
         },
@@ -139,8 +161,9 @@ def export_risk_memo(
         "symbol": symbol,
         "company": report["company"],
         "generated_at": generated_at,
-        "markdown_path": str(markdown_path),
-        "html_path": str(html_path),
+        "artifacts": artifacts,
+        "delivery_status": delivery_status(artifacts),
+        "delivery_errors": delivery_errors,
         "sources": sources,
         "narrative_status": narrative_status,
         "narrative_model": narrative_model,
@@ -447,6 +470,280 @@ ul{{padding-left:20px}} footer{{margin-top:20px;color:var(--muted);font-size:13p
 <footer>Generated {html.escape(generated_display)} · {html.escape(DISCLAIMER)}</footer></main></body></html>"""
 
 
+def render_pdf(report: dict) -> bytes:
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    buffer = io.BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=12 * mm,
+        rightMargin=12 * mm,
+        topMargin=13 * mm,
+        bottomMargin=13 * mm,
+        title=f"Varyn Risk Memo - {report['symbol']}",
+        author="Varyn Risk Intelligence",
+    )
+    palette = {
+        "ink": colors.HexColor("#111827"),
+        "muted": colors.HexColor("#526071"),
+        "line": colors.HexColor("#CBD5E1"),
+        "panel": colors.HexColor("#F5F7FA"),
+        "accent": colors.HexColor("#166534"),
+        "accent_soft": colors.HexColor("#DCFCE7"),
+        "navy": colors.HexColor("#0F2742"),
+        "white": colors.white,
+    }
+    base = getSampleStyleSheet()
+    styles = {
+        "eyebrow": ParagraphStyle(
+            "MemoEyebrow",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=7.5,
+            leading=9,
+            textColor=palette["accent"],
+            spaceAfter=3,
+            uppercase=True,
+        ),
+        "title": ParagraphStyle(
+            "MemoTitle",
+            parent=base["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=21,
+            leading=24,
+            alignment=TA_LEFT,
+            textColor=palette["ink"],
+            spaceAfter=4,
+        ),
+        "meta": ParagraphStyle(
+            "MemoMeta",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=10,
+            textColor=palette["muted"],
+        ),
+        "section": ParagraphStyle(
+            "MemoSection",
+            parent=base["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=13,
+            leading=15,
+            textColor=palette["navy"],
+            spaceBefore=10,
+            spaceAfter=5,
+        ),
+        "subsection": ParagraphStyle(
+            "MemoSubsection",
+            parent=base["Heading3"],
+            fontName="Helvetica-Bold",
+            fontSize=9.5,
+            leading=12,
+            textColor=palette["ink"],
+            spaceBefore=7,
+            spaceAfter=4,
+        ),
+        "body": ParagraphStyle(
+            "MemoBody",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=8.3,
+            leading=11.5,
+            textColor=palette["ink"],
+            spaceAfter=4,
+        ),
+        "note": ParagraphStyle(
+            "MemoNote",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=7.5,
+            leading=10,
+            textColor=palette["muted"],
+            spaceAfter=4,
+        ),
+        "cell": ParagraphStyle(
+            "MemoCell",
+            parent=base["BodyText"],
+            fontName="Helvetica",
+            fontSize=6.9,
+            leading=8.4,
+            textColor=palette["ink"],
+        ),
+        "cell_header": ParagraphStyle(
+            "MemoCellHeader",
+            parent=base["BodyText"],
+            fontName="Helvetica-Bold",
+            fontSize=6.7,
+            leading=8,
+            textColor=palette["white"],
+            alignment=TA_CENTER,
+        ),
+    }
+
+    def paragraph(value, style="body"):
+        return Paragraph(html.escape(str(value or "Not available")), styles[style])
+
+    def evidence_table(rows: list[dict], columns: tuple[str, ...], weights: tuple[float, ...]):
+        header = [paragraph(column, "cell_header") for column in columns]
+        body = [
+            [paragraph(display_cell(row, column), "cell") for column in columns]
+            for row in rows
+        ]
+        total = sum(weights)
+        widths = [document.width * weight / total for weight in weights]
+        table = Table([header, *body], colWidths=widths, repeatRows=1, hAlign="LEFT")
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), palette["navy"]),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("GRID", (0, 0), (-1, -1), 0.35, palette["line"]),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [palette["white"], palette["panel"]]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        return table
+
+    generated_display = format_display_date(report["generated_at"])
+    story = [
+        paragraph("VARYN RISK INTELLIGENCE", "eyebrow"),
+        Paragraph(
+            f"{html.escape(report['company'])} <font color='#526071'>({html.escape(report['symbol'])})</font>",
+            styles["title"],
+        ),
+        paragraph(f"Generated {generated_display}", "meta"),
+        Spacer(1, 4 * mm),
+        Table(
+            [[paragraph(report["disclaimer"], "body")]],
+            colWidths=[document.width],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), palette["accent_soft"]),
+                    ("BOX", (0, 0), (-1, -1), 0.8, palette["accent"]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            ),
+        ),
+        paragraph("Deterministic Evidence", "section"),
+        paragraph(
+            "Populated directly from registered Varyn tools. Figures are not written by the reasoning provider.",
+            "note",
+        ),
+        paragraph("Market Snapshot", "subsection"),
+        evidence_table(report["market_rows"], ("Metric", "Value", "Source", "As of", "Confidence"), (1.3, 1, 1.7, 1.35, 0.8)),
+        paragraph("Official Fundamentals", "subsection"),
+        evidence_table(report["fundamental_rows"], ("Metric", "Value", "Source", "Filing date", "Form", "Confidence"), (1.25, 1, 1.65, 1.2, 0.55, 0.75)),
+        paragraph("Macro Context", "subsection"),
+        evidence_table(report["macro_rows"], ("Metric", "Value", "Source", "Observation date", "Confidence"), (1.55, 0.9, 1.8, 1.25, 0.75)),
+        paragraph("Structured Risk Read", "subsection"),
+        evidence_table(report["risk_rows"], ("Metric", "Value", "Source", "As of", "Confidence"), (1.4, 0.9, 1.7, 1.3, 0.75)),
+        paragraph(f"Risk confidence rationale: {report['risk_confidence']['reason']}", "note"),
+        paragraph("Key Drivers", "subsection"),
+        *[paragraph(f"- {item}") for item in report["drivers"]],
+        paragraph("Recommended Actions", "subsection"),
+        *[paragraph(f"- {item}") for item in report["actions"]],
+        paragraph("Analyst Narrative", "section"),
+        Table(
+            [[[
+                paragraph("PROVIDER INTERPRETATION", "eyebrow"),
+                paragraph(
+                    "Interpretation over the deterministic evidence above; not a source of new figures.",
+                    "note",
+                ),
+                *[paragraph(part) for part in report["narrative"].split("\n\n") if part.strip()],
+            ]]],
+            colWidths=[document.width],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), palette["panel"]),
+                    ("BOX", (0, 0), (-1, -1), 0.8, palette["line"]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ]
+            ),
+        ),
+        paragraph("Provenance Notes", "section"),
+        *[
+            paragraph(f"{key.title()}: {value or 'No additional source note was available.'}")
+            for key, value in report["source_notes"].items()
+        ],
+        paragraph(f"Narrative status: {report['narrative_status']}", "note"),
+    ]
+
+    def page_footer(canvas, _document):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(palette["muted"])
+        canvas.drawString(12 * mm, 7 * mm, "Varyn Risk Intelligence - preliminary, not financial advice")
+        canvas.drawRightString(landscape(A4)[0] - 12 * mm, 7 * mm, f"Page {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=page_footer, onLaterPages=page_footer)
+    return buffer.getvalue()
+
+
+def build_download_artifacts(
+    base_name: str,
+    markdown_content: str,
+    html_content: str,
+    pdf_content: bytes,
+) -> tuple[list[dict], list[str]]:
+    payloads = (
+        ("markdown", f"{base_name}.md", "text/markdown;charset=utf-8", markdown_content.encode("utf-8")),
+        ("html", f"{base_name}.html", "text/html;charset=utf-8", html_content.encode("utf-8")),
+        ("pdf", f"{base_name}.pdf", "application/pdf", pdf_content),
+    )
+    artifacts = []
+    errors = []
+    for format_name, filename, mime_type, content in payloads:
+        try:
+            artifacts.append(
+                {
+                    "format": format_name,
+                    "filename": filename,
+                    "mime_type": mime_type,
+                    "encoding": "base64",
+                    "content": base64.b64encode(content).decode("ascii"),
+                    "size_bytes": len(content),
+                }
+            )
+        except Exception:
+            errors.append(f"{format_name.upper()} content could not be prepared for browser download.")
+    return artifacts, errors
+
+
+def delivery_status(artifacts: list[dict]) -> str:
+    if len(artifacts) == 3:
+        return "ready"
+    return "partial" if artifacts else "unavailable"
+
+
+def persist_optional_audit_copies(entries) -> dict:
+    results = {}
+    for format_name, path, content in entries:
+        try:
+            write_bytes_atomic(path, content)
+            results[format_name] = {"written": True, "path": str(path)}
+        except OSError:
+            results[format_name] = {"written": False, "path": str(path)}
+    return results
+
+
 def evidence_row(metric: str, value: str, source: str | None, date: str | None, confidence: str, *, available: bool) -> dict:
     return {
         "metric": metric,
@@ -666,15 +963,19 @@ def parse_or_now(value) -> datetime:
 def trusted_memo_path(value: str) -> Path:
     root = MEMO_DIR.resolve()
     path = Path(value).resolve()
-    if path.parent != root or path.suffix.lower() not in {".md", ".html"}:
+    if path.parent != root or path.suffix.lower() not in {".md", ".html", ".pdf"}:
         raise ValueError("Memo export path is outside the approved local memo folder.")
     return path
 
 
 def write_text_atomic(path: Path, value: str) -> None:
+    write_bytes_atomic(path, value.encode("utf-8"))
+
+
+def write_bytes_atomic(path: Path, value: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(f"{path.suffix}.tmp")
-    temporary.write_text(value, encoding="utf-8")
+    temporary.write_bytes(value)
     temporary.replace(path)
 
 

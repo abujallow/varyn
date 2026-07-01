@@ -61,6 +61,8 @@ class RiskMemoInput(BaseModel):
     generated_at: str | None = Field(default=None, description="Backend-frozen generation time.")
     markdown_path: str | None = Field(default=None, description="Backend-approved Markdown path.")
     html_path: str | None = Field(default=None, description="Backend-approved HTML path.")
+    pdf_path: str | None = Field(default=None, description="Backend-approved PDF path.")
+    base_name: str | None = Field(default=None, description="Backend-approved download filename stem.")
 
 
 @dataclass
@@ -321,7 +323,7 @@ def build_tool_registry() -> ToolRegistry:
             name="export_risk_memo",
             description=(
                 "Generate and export an audit-ready single-company Varyn risk memo in Markdown "
-                "and HTML. Use only when the user explicitly asks to generate or export a risk "
+                "HTML, and PDF for immediate browser download. Use only when the user explicitly asks to generate or export a risk "
                 "memo. This consequential file-writing action always requires exact approval."
             ),
             input_model=RiskMemoInput,
@@ -471,8 +473,8 @@ def summarize_tool_audit(name: str, output: dict) -> dict:
                 "company": output.get("company"),
                 "generated_at": output.get("generated_at"),
                 "sources": output.get("sources") or [],
-                "markdown_path": output.get("markdown_path"),
-                "html_path": output.get("html_path"),
+                "download_formats": [item.get("format") for item in output.get("artifacts") or []],
+                "delivery_status": output.get("delivery_status"),
                 "narrative_status": output.get("narrative_status"),
             }
         )
@@ -492,7 +494,7 @@ def summarize_tool_arguments(name: str, arguments: dict) -> dict:
         summary["query_character_count"] = len(str(arguments.get("query") or ""))
     if name == "export_risk_memo":
         summary["symbol"] = arguments.get("symbol")
-        summary["output_formats"] = ["markdown", "html"]
+        summary["output_formats"] = ["markdown", "html", "pdf"]
     if name == "active_file":
         summary["question_character_count"] = len(str(arguments.get("question") or ""))
     return summary

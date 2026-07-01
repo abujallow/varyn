@@ -140,7 +140,7 @@ def health():
             "safety_rails": True,
             "persistent_audit": True,
             "proactive_kill_switch": True,
-            "exportable_risk_memo": "Markdown + HTML with confirmation gate",
+            "exportable_risk_memo": "Markdown + HTML + PDF browser downloads with confirmation gate",
         },
         "source_health": current_source_health(),
         "sec_edgar": sec_status(),
@@ -536,6 +536,7 @@ def execute_approved_confirmation(confirmation: dict) -> dict:
     action = confirmation["action"]
     session_id = confirmation["session_id"]
     arguments = confirmation.get("arguments") or {}
+    output = {}
     if confirmation.get("action_kind") == "tool":
         runtime = ToolRuntime(
             session_id=session_id,
@@ -552,7 +553,8 @@ def execute_approved_confirmation(confirmation: dict) -> dict:
         )
         if not execution.ok:
             raise HTTPException(status_code=400, detail=execution.error or "Approved action failed.")
-        reply = approved_tool_reply(action, execution.output or {})
+        output = execution.output or {}
+        reply = approved_tool_reply(action, output)
     elif action == "clear_file_context":
         memory.clear_file_context(session_id)
         reply = "Active file context cleared."
@@ -576,6 +578,9 @@ def execute_approved_confirmation(confirmation: dict) -> dict:
         "confirmation": None,
         "memory": memory.session_summary(session_id),
         "events": [{"type": "system", "label": f"Approved action completed: {action}"}],
+        "artifacts": output.get("artifacts") or [],
+        "delivery_status": output.get("delivery_status"),
+        "delivery_errors": output.get("delivery_errors") or [],
     }
 
 
@@ -588,11 +593,17 @@ def approved_tool_reply(action: str, output: dict) -> str:
     if action == "forget_fact":
         return f"Forgot durable fact {fact.get('id', '')}.".strip()
     if action == "export_risk_memo":
+        company = output.get("company") or output.get("symbol")
+        formats = [item.get("format", "").upper() for item in output.get("artifacts") or []]
+        if formats:
+            availability = f"Browser downloads ready: {', '.join(formats)}."
+        else:
+            availability = "The memo was generated, but browser download content could not be prepared."
+        errors = " ".join(output.get("delivery_errors") or [])
         return (
-            f"Risk memo generated for {output.get('company') or output.get('symbol')}. "
-            f"Markdown: {output.get('markdown_path')}. HTML: {output.get('html_path')}. "
-            f"Analyst narrative status: {output.get('narrative_status') or 'unavailable'}."
-        )
+            f"Risk memo generated for {company}. {availability} "
+            f"{errors} Analyst narrative status: {output.get('narrative_status') or 'unavailable'}."
+        ).strip()
     return f"Approved action completed: {action}."
 
 
