@@ -1,6 +1,6 @@
 const DEFAULT_AGENT_URL = "http://127.0.0.1:8788";
-const AGENT_TIMEOUT_MS = 8000;
-const OFFLINE_MESSAGE = "Varyn's intelligence layer runs locally on its owner's machine. File analysis requires the local backend to be running.";
+const AGENT_TIMEOUT_MS = 25000;
+const OFFLINE_MESSAGE = "Varyn is warming up — the intelligence layer may be starting from a cold state. Please try the upload again in 15 seconds.";
 
 function offlineResponse() {
   return Response.json(

@@ -1,7 +1,7 @@
 const DEFAULT_AGENT_URL = "http://127.0.0.1:8788";
-const AGENT_TIMEOUT_MS = 8000;
+const AGENT_TIMEOUT_MS = 25000;
 const OFFLINE_RESPONSE = {
-  reply: "Varyn's intelligence layer runs locally on its owner's machine. The HUD is fully deployed — live agent responses require the local backend to be running.",
+  reply: "Varyn is warming up — the intelligence layer may be starting from a cold state. Please try your command again in 15 seconds.",
   mode: "offline",
   provider: "none",
 };

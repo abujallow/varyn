@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 
@@ -42,13 +43,24 @@ app = FastAPI(title="Varyn Local Agent", version="0.3.0", lifespan=lifespan)
 
 runtime_public = public_settings()["runtime"]
 frontend_port = int(runtime_public["frontend_port"])
+frontend_origins = list(
+    dict.fromkeys(
+        origin
+        for origin in [
+            f"http://localhost:{frontend_port}",
+            f"http://127.0.0.1:{frontend_port}",
+            "http://localhost:3200",
+            "http://localhost:3000",
+            "https://varyn-ai.vercel.app",
+            os.environ.get("FRONTEND_URL", ""),
+        ]
+        if origin
+    )
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        f"http://localhost:{frontend_port}",
-        f"http://127.0.0.1:{frontend_port}",
-    ],
+    allow_origins=frontend_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -609,3 +621,10 @@ def condense_events(events: list[dict]) -> list[dict]:
 
 def sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=True)}\n\n"
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.environ.get("PORT", 8788))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

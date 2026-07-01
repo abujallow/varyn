@@ -4,6 +4,8 @@ import os
 import json
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 AGENT_DIR = Path(__file__).resolve().parent
@@ -29,25 +31,9 @@ DEFAULT_OPENROUTER_MODEL_CHAIN = PROVIDER_CONFIG.get("model_chain") or [
 ]
 
 
-def load_env_file(path: Path, *, override: bool = False) -> None:
-    if not path.exists():
-        return
-
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if override or not os.environ.get(key):
-            os.environ[key] = value
-
-
-load_env_file(ROOT_DIR / ".env.local")
-load_env_file(ROOT_DIR / "agent.env", override=True)
-load_env_file(AGENT_DIR / ".env", override=True)
+load_dotenv(ROOT_DIR / ".env.local", override=False)
+load_dotenv(ROOT_DIR / "agent.env", override=False)
+load_dotenv(AGENT_DIR / ".env", override=False)
 
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

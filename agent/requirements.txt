@@ -1,7 +1,10 @@
 fastapi==0.124.4
 uvicorn[standard]==0.38.0
 pydantic==2.12.5
+python-dotenv==1.0.1
+requests==2.32.3
 yfinance==0.2.66
+pandas==2.2.2
 pandas-datareader==0.10.0
 setuptools==80.9.0
 pypdf==6.4.1
