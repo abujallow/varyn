@@ -113,6 +113,11 @@ def is_stop_command(message: str) -> bool:
     return clean in commands or any(clean.startswith(f"{cmd} ") for cmd in commands)
 
 
+@app.get("/ping")
+def ping():
+    return {"status": "awake"}
+
+
 @app.get("/health")
 def health():
     return {
