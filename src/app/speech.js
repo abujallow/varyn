@@ -6,6 +6,10 @@ const SMALL_NUMBERS = [
 
 const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
 const SCALES = ["", "thousand", "million", "billion", "trillion"];
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 export const DEFAULT_PREFERRED_VOICES = [
   "Microsoft Andrew Multilingual Online (Natural)",
@@ -83,6 +87,29 @@ function numberToWords(value, maximumDecimals = 2) {
   return `${rounded < 0 ? "minus " : ""}${words.join(" ")}`.replace(/^minus minus /, "minus ");
 }
 
+function spokenOrdinal(value) {
+  const remainder100 = value % 100;
+  if (remainder100 >= 11 && remainder100 <= 13) return `${value}th`;
+  const suffix = { 1: "st", 2: "nd", 3: "rd" }[value % 10] || "th";
+  return `${value}${suffix}`;
+}
+
+function formatSpokenDate(yearValue, monthValue, dayValue) {
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) return null;
+
+  return `${MONTH_NAMES[month - 1]} ${spokenOrdinal(day)}, ${year}`;
+}
+
 export function sanitizeForSpeech(text) {
   if (!text) return "";
   let cleaned = String(text)
@@ -105,6 +132,15 @@ export function sanitizeForSpeech(text) {
       /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\b/gi,
       "updated recently",
     )
+    .replace(/\b(\d{4})[-/](\d{2})[-/](\d{2})\b/g, (match, year, month, day) => (
+      formatSpokenDate(year, month, day) || match
+    ))
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g, (match, month, day, year) => (
+      formatSpokenDate(year, month, day) || match
+    ))
+    .replace(/\b(\d{1,2})-(\d{1,2})-(\d{4})\b/g, (match, month, day, year) => (
+      formatSpokenDate(year, month, day) || match
+    ))
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi, " ")
     .replace(/(\d+)\s*[Yy]\s*[-\u2013\u2014]\s*(\d+)\s*[Yy]\b/g, (_, first, second) => (
       `${numberToWords(first, 0)}-year minus ${numberToWords(second, 0)}-year`
