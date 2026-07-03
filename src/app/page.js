@@ -236,8 +236,8 @@ export default function Home() {
   const voicePreferredNamesRef = useRef(DEFAULT_PREFERRED_VOICES);
   const voiceRateRef = useRef(1.0);
   const voicePitchRef = useRef(0.99);
-  const sentencePauseRef = useRef(140);
-  const paragraphPauseRef = useRef(300);
+  const sentencePauseRef = useRef(70);
+  const paragraphPauseRef = useRef(170);
   const voiceTestTextRef = useRef("Varyn voice online.");
   const voiceTestCompleteRef = useRef(false);
   const voiceTestRunRef = useRef(0);
@@ -1083,8 +1083,8 @@ export default function Home() {
           : DEFAULT_PREFERRED_VOICES;
         voiceRateRef.current = Number.isFinite(configuredRate) ? configuredRate : 1.0;
         voicePitchRef.current = Number.isFinite(configuredPitch) ? configuredPitch : 0.99;
-        sentencePauseRef.current = Number.isFinite(configuredSentencePause) ? configuredSentencePause : 140;
-        paragraphPauseRef.current = Number.isFinite(configuredParagraphPause) ? configuredParagraphPause : 300;
+        sentencePauseRef.current = Number.isFinite(configuredSentencePause) ? configuredSentencePause : 70;
+        paragraphPauseRef.current = Number.isFinite(configuredParagraphPause) ? configuredParagraphPause : 170;
         voiceTestTextRef.current = data.voice?.test_utterance || "Varyn voice online.";
         setVoiceMode(configuredVoiceMode);
         setPushToTalkKey(configuredPushKey);
