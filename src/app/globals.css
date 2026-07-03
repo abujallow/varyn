@@ -878,6 +878,7 @@ input:focus-visible {
   gap: 4px;
   height: 1.55rem;
   justify-content: center;
+  transform: translateY(-0.9rem);
 }
 
 .waveform span {
