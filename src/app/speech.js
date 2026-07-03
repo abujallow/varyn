@@ -18,23 +18,22 @@ export const DEFAULT_PREFERRED_VOICES = [
   "Microsoft Aria Online (Natural)",
 ];
 
-export function splitForSpeech(text, sentencePauseMs = 70, paragraphPauseMs = 170) {
+export function splitForSpeech(text, paragraphPauseMs = 170) {
   if (!text) return [];
   const paragraphs = String(text).split(/\n\s*\n+/).map((part) => part.trim()).filter(Boolean);
   const segmenter = typeof Intl !== "undefined" && Intl.Segmenter
     ? new Intl.Segmenter("en-US", { granularity: "sentence" })
     : null;
 
-  return paragraphs.flatMap((paragraph, paragraphIndex) => {
+  return paragraphs.map((paragraph, paragraphIndex) => {
     const sentences = segmenter
       ? [...segmenter.segment(paragraph)].map(({ segment }) => segment.trim()).filter(Boolean)
       : (paragraph.match(/[^.!?]+(?:[.!?]+|$)/g) || [paragraph]).map((part) => part.trim()).filter(Boolean);
-    return sentences.map((sentence, sentenceIndex) => ({
-      text: sentence,
-      pauseAfterMs: sentenceIndex === sentences.length - 1 && paragraphIndex < paragraphs.length - 1
-        ? paragraphPauseMs
-        : sentencePauseMs,
-    }));
+    return {
+      text: paragraph,
+      sentences,
+      pauseAfterMs: paragraphIndex < paragraphs.length - 1 ? paragraphPauseMs : 0,
+    };
   });
 }
 

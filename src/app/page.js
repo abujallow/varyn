@@ -236,7 +236,6 @@ export default function Home() {
   const voicePreferredNamesRef = useRef(DEFAULT_PREFERRED_VOICES);
   const voiceRateRef = useRef(1.0);
   const voicePitchRef = useRef(0.99);
-  const sentencePauseRef = useRef(70);
   const paragraphPauseRef = useRef(170);
   const voiceTestTextRef = useRef("Varyn voice online.");
   const voiceTestCompleteRef = useRef(false);
@@ -325,10 +324,20 @@ export default function Home() {
     (text) => {
       const speechParts = splitForSpeech(
         text,
-        sentencePauseRef.current,
         paragraphPauseRef.current,
       )
-        .map((part) => ({ ...part, text: sanitizeForSpeech(part.text) }))
+        .map((part) => ({
+          ...part,
+          text: part.sentences
+            .map((sentence) => {
+              const cleanSentence = sanitizeForSpeech(sentence);
+              if (!cleanSentence) return "";
+              const ending = sentence.match(/[.!?]+\s*$/)?.[0].trim().slice(-1) || ".";
+              return `${cleanSentence}${ending}`;
+            })
+            .filter(Boolean)
+            .join(" "),
+        }))
         .filter((part) => part.text);
       if (typeof window === "undefined" || !window.speechSynthesis || speechParts.length === 0) return;
 
@@ -1073,7 +1082,6 @@ export default function Home() {
         const configuredPushKey = data.voice?.push_to_talk_key || "Space";
         const configuredRate = Number(data.voice?.rate);
         const configuredPitch = Number(data.voice?.pitch);
-        const configuredSentencePause = Number(data.voice?.sentence_pause_ms);
         const configuredParagraphPause = Number(data.voice?.paragraph_pause_ms);
         voiceModeRef.current = configuredVoiceMode;
         pushToTalkKeyRef.current = configuredPushKey;
@@ -1083,7 +1091,6 @@ export default function Home() {
           : DEFAULT_PREFERRED_VOICES;
         voiceRateRef.current = Number.isFinite(configuredRate) ? configuredRate : 1.0;
         voicePitchRef.current = Number.isFinite(configuredPitch) ? configuredPitch : 0.99;
-        sentencePauseRef.current = Number.isFinite(configuredSentencePause) ? configuredSentencePause : 70;
         paragraphPauseRef.current = Number.isFinite(configuredParagraphPause) ? configuredParagraphPause : 170;
         voiceTestTextRef.current = data.voice?.test_utterance || "Varyn voice online.";
         setVoiceMode(configuredVoiceMode);
