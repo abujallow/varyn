@@ -653,12 +653,33 @@ input:focus-visible {
 }
 
 .status-readout {
+  align-items: center;
+  background: rgba(2, 5, 10, 0.44);
+  border: 1px solid rgba(var(--accent-bright-rgb), 0.1);
+  border-radius: 7px;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin-top: 0.5rem;
+  min-height: 2.15rem;
+  padding: 0.42rem 0.5rem;
+}
+
+.status-readout span {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.6rem;
   font-weight: 900;
-  letter-spacing: 0.24em;
-  min-height: 1rem;
-  text-align: center;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.status-readout strong {
+  color: var(--accent-bright);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+  text-align: right;
   text-transform: uppercase;
 }
 

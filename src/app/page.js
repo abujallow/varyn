@@ -1508,6 +1508,10 @@ export default function Home() {
                 ? "Telemetry unavailable"
                 : "Telemetry connecting"}
           </div>
+          <div className="status-readout" aria-live="polite">
+            <span>Runtime</span>
+            <strong>{status}</strong>
+          </div>
           {[
             ["CPU", typeof telemetry.cpu === "number" ? `${telemetry.cpu}%` : "N/A", typeof telemetry.cpu === "number" ? telemetry.cpu : 0, "cyan"],
             ["MEM", typeof telemetry.mem === "number" ? `${telemetry.mem}%` : "N/A", typeof telemetry.mem === "number" ? telemetry.mem : 0, typeof telemetry.mem === "number" && telemetry.mem > 62 ? "amber" : "cyan"],
@@ -1581,7 +1585,6 @@ export default function Home() {
         </div>
 
         <div className="vital-core">
-          <div className="status-readout">{status}</div>
           <div className="orbital-core-frame">
             <button
               className={`orbital-core ${pushToTalkHeld ? "is-held" : ""}`}
