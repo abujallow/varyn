@@ -37,10 +37,10 @@
       "Microsoft Brian Online (Natural)",
       "Microsoft Aria Online (Natural)"
     ],
-    "rate": 0.96,
+    "rate": 1.0,
     "pitch": 0.99,
-    "sentence_pause_ms": 280,
-    "paragraph_pause_ms": 560,
+    "sentence_pause_ms": 140,
+    "paragraph_pause_ms": 300,
     "test_utterance": "Varyn voice online.",
     "stt_provider": "browser-web-speech",
     "tts_provider": "browser-speech-synthesis",

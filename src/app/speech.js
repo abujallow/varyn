@@ -18,7 +18,7 @@ export const DEFAULT_PREFERRED_VOICES = [
   "Microsoft Aria Online (Natural)",
 ];
 
-export function splitForSpeech(text, sentencePauseMs = 280, paragraphPauseMs = 560) {
+export function splitForSpeech(text, sentencePauseMs = 140, paragraphPauseMs = 300) {
   if (!text) return [];
   const paragraphs = String(text).split(/\n\s*\n+/).map((part) => part.trim()).filter(Boolean);
   const segmenter = typeof Intl !== "undefined" && Intl.Segmenter
