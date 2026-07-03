@@ -185,6 +185,25 @@
     "request_timeout_seconds": 20,
     "fundamental_disagreement_percent": 10.0
   },
+  "cfpb": {
+    "enabled": true,
+    "base_url": "https://www.consumerfinance.gov/data-research/consumer-complaints/search/api/v1/",
+    "cache_directory": "data/cfpb",
+    "cache_ttl_seconds": 21600,
+    "stale_after_seconds": 172800,
+    "lookback_days": 90,
+    "request_timeout_seconds": 20,
+    "request_interval_seconds": 0.5,
+    "company_mappings": {
+      "TSLA": { "company": "Tesla, Inc.", "relationship": "manufacturer consumer-finance complaints" },
+      "F": { "company": "FORD MOTOR CREDIT CO.", "relationship": "captive consumer-finance affiliate" },
+      "GM": { "company": "General Motors Financial Company, Inc.", "relationship": "captive consumer-finance affiliate" },
+      "NVDA": { "applicable": false, "reason": "No CFPB consumer-finance complaint entity is mapped to Nvidia." },
+      "JPM": { "company": "JPMORGAN CHASE & CO.", "relationship": "consumer bank" },
+      "BAC": { "company": "BANK OF AMERICA, NATIONAL ASSOCIATION", "relationship": "consumer bank" },
+      "MTB": { "company": "M&T BANK CORPORATION", "relationship": "consumer bank" }
+    }
+  },
   "fred": {
     "enabled": true,
     "snapshot_file": "data/fred/macro_snapshot.json",

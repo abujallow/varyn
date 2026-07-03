@@ -155,3 +155,19 @@ Each tier must preserve the current working baseline and pass its verification b
   not prevent browser delivery, and local-copy status remains recorded in the persistent audit log.
 - If browser artifact preparation fails, Varyn states that plainly and never offers an inaccessible
   container path as though it were a usable download.
+
+## Data-Layer Phase 4 — Regulatory & Enforcement Signals
+
+- Varyn uses the official, keyless CFPB Consumer Complaint Database API for cached aggregate
+  complaint-volume trends. Exact company-name mappings are editable in `agent/varyn.config.json`.
+- The first increment covers the configured watchlist. JPM, BAC, and MTB map to their consumer-bank
+  entities; Ford and GM map to their captive-finance companies; Tesla maps to its CFPB company
+  record; Nvidia is explicitly marked not applicable rather than treated as an error.
+- Current and preceding 90-day windows are compared on demand and cached for six hours. The signal
+  feeds structured operational-risk context, source health, persistent tool audit, and the
+  deterministic evidence section of exported risk memos.
+- Complaint counts are unadjusted for company size and never represent a finding of wrongdoing,
+  regulatory breach, or complaint validity. CFPB is not part of the heartbeat loop in this phase,
+  avoiding additional background polling on the free hosting tier.
+- OCC enforcement remains a future official-CSV/document integration. Federal Reserve enforcement
+  remains a future structured JSON/CSV integration. Neither is queried in this phase.

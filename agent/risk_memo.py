@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from audit import AuditLogger, get_audit_logger
+from cfpb import get_complaint_signal
 from config import AGENT_DIR, DATA_DIR
 from fred import get_macro_context
 from providers import ProviderResult, complete
@@ -95,13 +96,15 @@ def export_risk_memo(
     market = fetch_market_context(symbol, prefer_cache=False)
     fundamentals = (market or {}).get("official_fundamentals") or get_official_fundamentals(symbol)
     macro = get_macro_context("")
+    regulatory = get_complaint_signal(symbol)
     risk = build_risk_analysis(
         f"Assess {symbol} market, credit, liquidity, and operational risk",
         market,
         [market] if market else [],
         macro,
+        [regulatory],
     )
-    report = build_report(symbol, generated_at, market or {}, fundamentals, macro, risk)
+    report = build_report(symbol, generated_at, market or {}, fundamentals, macro, regulatory, risk)
     narrative, narrative_status, narrative_model = generate_narrative(
         report,
         narrative_provider=narrative_provider,
@@ -133,7 +136,7 @@ def export_risk_memo(
     sources = sorted(
         {
             row["source"]
-            for section in ("market_rows", "fundamental_rows", "macro_rows", "risk_rows")
+            for section in ("market_rows", "fundamental_rows", "macro_rows", "regulatory_rows", "risk_rows")
             for row in report[section]
             if row.get("source") and row["source"] != "Not available"
         }
@@ -176,6 +179,7 @@ def build_report(
     market: dict,
     fundamentals: dict,
     macro: dict,
+    regulatory: dict,
     risk: dict,
 ) -> dict:
     company = market.get("name") or fundamentals.get("entity_name") or symbol
@@ -251,7 +255,9 @@ def build_report(
             )
         )
 
-    risk_confidence = assess_risk_confidence(market, fundamentals, macro)
+    regulatory_rows = build_regulatory_rows(regulatory, generated_at)
+
+    risk_confidence = assess_risk_confidence(market, fundamentals, macro, regulatory)
     risk_rows = [
         evidence_row(
             "Overall risk score",
@@ -282,19 +288,80 @@ def build_report(
         "market_rows": market_rows,
         "fundamental_rows": fundamental_rows,
         "macro_rows": macro_rows,
+        "regulatory_rows": regulatory_rows,
         "risk_rows": risk_rows,
         "risk_confidence": risk_confidence,
         "drivers": list(risk.get("drivers") or []),
         "actions": list(risk.get("actions") or []),
         "macro_risk_read": list(macro.get("risk_read") or []),
+        "regulatory_risk_read": regulatory.get("risk_read") if regulatory else None,
         "source_notes": {
             "market": "Market figures are shown only in the stamped market evidence table.",
             "fundamentals": "Official mapped SEC EDGAR companyfacts are shown only in the stamped fundamentals table.",
             "macro": "Official cached FRED observations are shown only in the stamped macro table.",
+            "regulatory": "Official CFPB complaint counts are unadjusted for company size and do not establish wrongdoing, regulatory breach, or complaint validity.",
             "risk confidence": risk_confidence["reason"],
             "narrative independence": "Risk confidence is derived before provider interpretation and does not change when the analyst narrative is unavailable.",
         },
     }
+
+
+def build_regulatory_rows(regulatory: dict, generated_at: str) -> list[dict]:
+    source = regulatory.get("source") or "CFPB Consumer Complaint Database"
+    confidence = confidence_level(regulatory.get("confidence"), "Flagged")
+    data_through = regulatory.get("data_through") or regulatory.get("pulled_at")
+    if regulatory.get("applicable") is False:
+        return [
+            evidence_row(
+                "CFPB complaint applicability",
+                "Not applicable",
+                source,
+                generated_at,
+                confidence,
+                available=True,
+            )
+        ]
+    if not regulatory.get("found"):
+        return [
+            evidence_row(
+                "CFPB complaint signal",
+                "Not available",
+                source,
+                data_through,
+                "Flagged",
+                available=False,
+            )
+        ]
+
+    current = regulatory.get("current_window") or {}
+    previous = regulatory.get("previous_window") or {}
+    change = regulatory.get("change_percent")
+    return [
+        evidence_row(
+            f"Complaints received ({current.get('start')} to {current.get('end')})",
+            format_value(current.get("count"), "integer"),
+            source,
+            data_through,
+            confidence,
+            available=current.get("count") is not None,
+        ),
+        evidence_row(
+            f"Prior-window complaints ({previous.get('start')} to {previous.get('end')})",
+            format_value(previous.get("count"), "integer"),
+            source,
+            data_through,
+            confidence,
+            available=previous.get("count") is not None,
+        ),
+        evidence_row(
+            "Complaint-volume change versus prior window",
+            format_value(change, "percent") if change is not None else "No prior baseline",
+            source,
+            data_through,
+            confidence,
+            available=True,
+        ),
+    ]
 
 
 def generate_narrative(
@@ -367,6 +434,7 @@ def qualitative_narrative_packet(report: dict) -> dict:
         "official_fundamentals_available": available_fundamentals,
         "fundamentals_confidence": confidence_summary(report["fundamental_rows"]),
         "macro_risk_context": [strip_quantitative_text(item) for item in report["macro_risk_read"]],
+        "consumer_conduct_context": strip_quantitative_text(report.get("regulatory_risk_read") or "Unavailable"),
         "risk_bands": risk_bands,
         "key_drivers": report["drivers"],
         "recommended_actions": report["actions"],
@@ -397,6 +465,10 @@ def render_markdown(report: dict) -> str:
         "### Macro Context",
         "",
         markdown_table(report["macro_rows"], ("Metric", "Value", "Source", "Observation date", "Confidence")),
+        "",
+        "### Regulatory & Consumer-Conduct Signals",
+        "",
+        markdown_table(report["regulatory_rows"], ("Metric", "Value", "Source", "Data through", "Confidence")),
         "",
         "### Structured Risk Read",
         "",
@@ -463,6 +535,7 @@ ul{{padding-left:20px}} footer{{margin-top:20px;color:var(--muted);font-size:13p
 <h3>Market Snapshot</h3>{table(report['market_rows'], ('Metric','Value','Source','As of','Confidence'))}
 <h3>Official Fundamentals</h3>{table(report['fundamental_rows'], ('Metric','Value','Source','Filing date','Form','Confidence'))}
 <h3>Macro Context</h3>{table(report['macro_rows'], ('Metric','Value','Source','Observation date','Confidence'))}
+<h3>Regulatory &amp; Consumer-Conduct Signals</h3>{table(report['regulatory_rows'], ('Metric','Value','Source','Data through','Confidence'))}
 <h3>Structured Risk Read</h3>{table(report['risk_rows'], ('Metric','Value','Source','As of','Confidence'))}<p class="note"><strong>Risk confidence rationale:</strong> {risk_confidence_reason}</p>
 <h3>Key Drivers</h3><ul>{drivers}</ul><h3>Recommended Actions</h3><ul>{actions}</ul></section>
 <section class="narrative"><div class="label">Provider Interpretation</div><h2>Analyst Narrative</h2><p class="note">Interpretation over the deterministic evidence above; not a source of new figures.</p>{narrative}</section>
@@ -648,6 +721,8 @@ def render_pdf(report: dict) -> bytes:
         evidence_table(report["fundamental_rows"], ("Metric", "Value", "Source", "Filing date", "Form", "Confidence"), (1.25, 1, 1.65, 1.2, 0.55, 0.75)),
         paragraph("Macro Context", "subsection"),
         evidence_table(report["macro_rows"], ("Metric", "Value", "Source", "Observation date", "Confidence"), (1.55, 0.9, 1.8, 1.25, 0.75)),
+        paragraph("Regulatory & Consumer-Conduct Signals", "subsection"),
+        evidence_table(report["regulatory_rows"], ("Metric", "Value", "Source", "Data through", "Confidence"), (1.65, 1.0, 1.9, 1.25, 0.75)),
         paragraph("Structured Risk Read", "subsection"),
         evidence_table(report["risk_rows"], ("Metric", "Value", "Source", "As of", "Confidence"), (1.4, 0.9, 1.7, 1.3, 0.75)),
         paragraph(f"Risk confidence rationale: {report['risk_confidence']['reason']}", "note"),
@@ -770,17 +845,20 @@ def display_cell(row: dict, column: str) -> str:
         "As of": "date",
         "Filing date": "date",
         "Observation date": "date",
+        "Data through": "date",
         "Form": "form",
         "Confidence": "confidence",
     }
     value = str(row.get(mapping[column]) or "Not available")
-    return format_display_date(value) if column in {"As of", "Filing date", "Observation date"} else value
+    return format_display_date(value) if column in {"As of", "Filing date", "Observation date", "Data through"} else value
 
 
-def assess_risk_confidence(market: dict, fundamentals: dict, macro: dict) -> dict:
+def assess_risk_confidence(market: dict, fundamentals: dict, macro: dict, regulatory: dict | None = None) -> dict:
     market_level = confidence_level(market.get("confidence"), "Flagged")
     fundamentals_level = confidence_level(fundamentals.get("confidence"), "Flagged")
     macro_level = confidence_level(macro.get("confidence"), "Flagged")
+    regulatory = regulatory or {}
+    regulatory_level = confidence_level(regulatory.get("confidence"), "Flagged")
     reasons = []
 
     if market_level == "Flagged":
@@ -811,6 +889,12 @@ def assess_risk_confidence(market: dict, fundamentals: dict, macro: dict) -> dic
     elif macro_level == "Low":
         reasons.append("Macro context includes stale or retained observations.")
 
+    regulatory_applicable = regulatory.get("applicable") is True
+    if regulatory_applicable and regulatory_level == "Flagged":
+        reasons.append("Applicable CFPB complaint context was unavailable or flagged; no consumer-conduct inference was made.")
+    elif regulatory_applicable and regulatory_level == "Low":
+        reasons.append("CFPB complaint context is retained or stale and should be treated cautiously.")
+
     if "Flagged" in {market_level, fundamentals_level, macro_level}:
         level = "Flagged"
     elif "Low" in {market_level, fundamentals_level, macro_level} or missing_material_fundamentals:
@@ -818,6 +902,8 @@ def assess_risk_confidence(market: dict, fundamentals: dict, macro: dict) -> dic
     else:
         level = "Medium"
         reasons.append("The deterministic risk score remains a preliminary framework even when underlying evidence is current and official.")
+    if regulatory_applicable and regulatory_level == "Flagged" and level == "Medium":
+        level = "Low"
 
     return {
         "level": level,
@@ -826,6 +912,7 @@ def assess_risk_confidence(market: dict, fundamentals: dict, macro: dict) -> dic
             "market": market_level,
             "fundamentals": fundamentals_level,
             "macro": macro_level,
+            "regulatory": regulatory_level if regulatory_applicable else "Not applicable",
         },
         "narrative_independent": True,
     }
@@ -847,7 +934,7 @@ def confidence_level(value, fallback: str) -> str:
 
 def validate_provenance(report: dict) -> None:
     errors = []
-    for section in ("market_rows", "fundamental_rows", "macro_rows", "risk_rows"):
+    for section in ("market_rows", "fundamental_rows", "macro_rows", "regulatory_rows", "risk_rows"):
         for row in report.get(section) or []:
             metric = row.get("metric") or "Unnamed metric"
             if row.get("value") == "Not available":

@@ -18,7 +18,7 @@ SYSTEM_PROMPT = """You are Varyn, a local-first AI risk intelligence command sys
 Operating style:
 - Be calm, direct, concise, professional, and conversational.
 - Answer ordinary questions naturally. Specialize in finance, markets, risk, analytics, and decision support.
-- Describe your architecture accurately when asked: Varyn is local-first, with a local Next.js/FastAPI interface, memory, risk engine, and telemetry; OpenRouter's configurable free-model fallback chain supplies conversational reasoning; yfinance supplies market data; SEC EDGAR supplies official fundamentals; and FRED supplies macro context.
+- Describe your architecture accurately when asked: Varyn is local-first, with a local Next.js/FastAPI interface, memory, risk engine, and telemetry; OpenRouter's configurable free-model fallback chain supplies conversational reasoning; yfinance supplies market data; SEC EDGAR supplies official fundamentals; FRED supplies macro context; and CFPB supplies official consumer-complaint aggregates.
 - Never claim that you are fully local, fully offline, independent of OpenRouter, or independent of external data APIs. If OpenRouter is unavailable, say that local tools remain available while provider reasoning is temporarily offline.
 - This is a provider-backed reasoning prompt routed through OpenRouter. When asked whether you are connected through OpenRouter, answer yes directly, identify OpenRouter as the current reasoning provider, and never hedge with "if OpenRouter is available." Local tools can survive an outage, but they do not replace conversational provider reasoning.
 - Never invent live data, ratios, tool results, file access, or provider status.
@@ -35,6 +35,7 @@ Tool discipline:
 - For every market figure, state its source, confidence level, and timestamp. Explain material source disagreement or fallback use plainly.
 - Treat SEC EDGAR companyfacts as the official fundamentals source. Cite the form and filing date for reported figures, mark unavailable mappings plainly, and prefer official filed values when a summary source conflicts.
 - Use macro_context for rates, yield-curve, inflation, labor, growth, and macro risk questions. FRED observations are official context, not a deterministic company-risk verdict; cite series ID, observation date, confidence, and cache timestamp.
+- Use regulatory_signals for consumer complaints, consumer conduct, or compliance-risk context. CFPB counts are unadjusted for company size and are not findings of wrongdoing; cite the comparison windows, source date, and confidence.
 - When market_data reports a heartbeat-cache timestamp, cite that timestamp, disclose if it is stale, and label the answer preliminary and not financial advice.
 - Use risk_analysis for explicit assessments, comparisons, stress tests, or risk memos.
 - Use export_risk_memo only when the user explicitly asks to generate or export a single-company risk memo. It prepares Markdown, HTML, and PDF browser downloads and must stop for exact approval.
@@ -106,6 +107,15 @@ MACRO_TERMS = (
     "consumer sentiment",
     "macro",
     "economic environment",
+)
+
+REGULATORY_TERMS = (
+    "cfpb",
+    "consumer complaint",
+    "complaint volume",
+    "consumer conduct",
+    "regulatory signal",
+    "compliance risk",
 )
 
 
@@ -598,6 +608,15 @@ def legacy_fallback_plan(message: str) -> list[ToolCall]:
             )
         ]
 
+    if is_regulatory_question(message):
+        return [
+            ToolCall(
+                id="fallback-regulatory",
+                name="regulatory_signals",
+                arguments={"query": message},
+            )
+        ]
+
     if is_market_question(message):
         return [
             ToolCall(
@@ -796,6 +815,24 @@ def local_result_summary(runtime: ToolRuntime, executed: list[ToolExecution]) ->
             "The reasoning provider is currently unavailable."
         )
 
+    regulatory_result = runtime.results.get("regulatory_signals") or {}
+    signals = regulatory_result.get("signals") or []
+    if signals:
+        signal = signals[0]
+        if signal.get("applicable") is False:
+            return (
+                f"{signal.get('risk_read')} Source: CFPB Consumer Complaint Database. "
+                "Preliminary regulatory context, not financial advice. The reasoning provider is currently unavailable."
+            )
+        if signal.get("found"):
+            confidence = (signal.get("confidence") or {}).get("level", "Unrated")
+            return (
+                f"{signal.get('risk_read')} Source: CFPB Consumer Complaint Database. "
+                f"Data through: {signal.get('data_through') or 'unavailable'}. Confidence: {confidence}. "
+                "Preliminary regulatory context, not financial advice. The reasoning provider is currently unavailable."
+            )
+        return "CFPB complaint context is unavailable; no regulatory inference was made."
+
     file_result = runtime.results.get("active_file")
     if file_result:
         return "The active file was loaded, but the reasoning provider is unavailable."
@@ -878,6 +915,8 @@ def mode_from_executions(executed: list[ToolExecution]) -> str:
         return "market"
     if "macro_context" in attempted:
         return "macro"
+    if "regulatory_signals" in attempted:
+        return "regulatory"
     if successful.intersection({"remember_fact", "update_fact", "forget_fact"}):
         return "system_command"
     return "conversation"
@@ -891,6 +930,7 @@ def tool_event(execution: ToolExecution) -> dict:
     labels = {
         "market_data": ("market", "Market data tool activated"),
         "macro_context": ("market", "FRED macro context activated"),
+        "regulatory_signals": ("risk", "CFPB regulatory signal activated"),
         "risk_analysis": ("risk", "Risk engine activated"),
         "export_risk_memo": ("risk", "Risk memo export awaiting approval"),
         "active_file": ("memory", "Active file tool activated"),
@@ -952,6 +992,11 @@ def is_market_question(message: str) -> bool:
 def is_macro_question(message: str) -> bool:
     text = message.lower()
     return any(term in text for term in MACRO_TERMS)
+
+
+def is_regulatory_question(message: str) -> bool:
+    text = message.lower()
+    return any(term in text for term in REGULATORY_TERMS)
 
 
 def memory_fallback_call(message: str) -> ToolCall | None:

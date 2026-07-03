@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, Field, ValidationError
 
+from cfpb import get_complaint_signals
 from memory import LongTermMemoryStore
 from audit import AuditLogger
 from safety import SafetyRails
@@ -14,7 +15,7 @@ from risk_memo import (
     memo_confirmation_description,
     prepare_memo_arguments,
 )
-from tools.market import get_market_contexts
+from tools.market import extract_symbols, get_market_contexts
 from tools.risk import build_risk_analysis
 
 
@@ -28,6 +29,10 @@ class RiskAnalysisInput(BaseModel):
 
 class MacroContextInput(BaseModel):
     query: str = Field(min_length=1, description="The macroeconomic indicator or risk-context question.")
+
+
+class RegulatorySignalsInput(BaseModel):
+    query: str = Field(min_length=1, description="The company or ticker for CFPB complaint trend context.")
 
 
 class ActiveFileInput(BaseModel):
@@ -244,17 +249,35 @@ def run_risk_analysis(values: RiskAnalysisInput, runtime: ToolRuntime) -> dict:
     contexts = market_result.get("contexts") or get_market_contexts(values.query)
     primary = contexts[0] if contexts else None
     macro_result = runtime.results.get("macro_context") or get_macro_context(values.query)
-    analysis = build_risk_analysis(values.query, primary, contexts, macro_result)
+    regulatory_result = runtime.results.get("regulatory_signals") or run_regulatory_signals(
+        RegulatorySignalsInput(query=values.query), runtime
+    )
+    signals = regulatory_result.get("signals") or []
+    analysis = build_risk_analysis(values.query, primary, contexts, macro_result, signals)
     return {
         "query": values.query,
         "analysis": analysis,
         "market_contexts": contexts,
+        "regulatory_signals": signals,
         "source": "local Varyn risk engine",
     }
 
 
 def run_macro_context(values: MacroContextInput, runtime: ToolRuntime) -> dict:
     return get_macro_context(values.query)
+
+
+def run_regulatory_signals(values: RegulatorySignalsInput, runtime: ToolRuntime) -> dict:
+    symbols = extract_symbols(values.query)
+    if not symbols:
+        raise ValueError("A supported company name or ticker is required for CFPB complaint context.")
+    signals = get_complaint_signals(symbols)
+    return {
+        "query": values.query,
+        "signals": signals,
+        "source": "CFPB Consumer Complaint Database",
+        "applicable_count": sum(1 for item in signals if item.get("applicable")),
+    }
 
 
 def run_active_file(values: ActiveFileInput, runtime: ToolRuntime) -> dict:
@@ -318,6 +341,19 @@ def run_export_risk_memo(values: RiskMemoInput, runtime: ToolRuntime) -> dict:
 
 def build_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
+    registry.register(
+        RegisteredTool(
+            name="regulatory_signals",
+            description=(
+                "Read cached official CFPB consumer-complaint volume and trend aggregates for a "
+                "mapped public company. Use for consumer-conduct, complaint, regulatory-signal, "
+                "or compliance-risk questions and before relevant company risk assessments. "
+                "Counts are unadjusted and are not findings of wrongdoing."
+            ),
+            input_model=RegulatorySignalsInput,
+            handler=run_regulatory_signals,
+        )
+    )
     registry.register(
         RegisteredTool(
             name="export_risk_memo",
@@ -447,10 +483,37 @@ def summarize_tool_audit(name: str, output: dict) -> dict:
                 "series": [item.get("id") for item in output.get("series") or []],
             }
         )
+    elif name == "regulatory_signals":
+        signals = output.get("signals") or []
+        summary.update(
+            {
+                "source": output.get("source"),
+                "symbols": [item.get("symbol") for item in signals],
+                "confidence": sorted(
+                    {
+                        (item.get("confidence") or {}).get("level")
+                        for item in signals
+                        if (item.get("confidence") or {}).get("level")
+                    }
+                ),
+                "timestamps": [item.get("pulled_at") for item in signals if item.get("pulled_at")],
+            }
+        )
     elif name == "risk_analysis":
         summary["source"] = output.get("source")
         summary["symbols"] = [
             item.get("symbol") for item in output.get("market_contexts") or []
+        ]
+        signals = output.get("regulatory_signals") or []
+        summary["regulatory_sources"] = [
+            {
+                "symbol": item.get("symbol"),
+                "source": item.get("source"),
+                "confidence": (item.get("confidence") or {}).get("level"),
+                "timestamp": item.get("pulled_at"),
+                "applicable": item.get("applicable"),
+            }
+            for item in signals
         ]
     elif name == "active_file":
         file_data = output.get("file") or {}
@@ -490,7 +553,7 @@ def summarize_tool_arguments(name: str, arguments: dict) -> dict:
         summary["statement_character_count"] = len(str(arguments.get("statement") or ""))
     if arguments.get("fact_id"):
         summary["fact_id"] = arguments["fact_id"]
-    if name in {"market_data", "risk_analysis", "macro_context", "export_risk_memo"}:
+    if name in {"market_data", "risk_analysis", "macro_context", "regulatory_signals", "export_risk_memo"}:
         summary["query_character_count"] = len(str(arguments.get("query") or ""))
     if name == "export_risk_memo":
         summary["symbol"] = arguments.get("symbol")

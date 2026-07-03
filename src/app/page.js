@@ -1539,6 +1539,7 @@ export default function Home() {
               ["yfinance", sourceHealth.sources.yfinance],
               ["SEC EDGAR", sourceHealth.sources.sec_edgar],
               ["FRED", sourceHealth.sources.fred],
+              ["CFPB", sourceHealth.sources.cfpb],
             ].map(([label, source]) => (
               <div
                 className={`source-health-row source-status-${source?.status || "unknown"}`}

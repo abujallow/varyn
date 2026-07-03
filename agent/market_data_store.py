@@ -94,7 +94,7 @@ def source_health_status(subsystem_states: dict[str, dict] | None = None) -> dic
     with _LOCK:
         payload = read_json(SOURCE_HEALTH_PATH, default_source_health())
     sources = payload.setdefault("sources", {})
-    for source_name in ("yfinance", "stooq", "sec_edgar", "fred"):
+    for source_name in ("yfinance", "stooq", "sec_edgar", "fred", "cfpb"):
         sources.setdefault(source_name, default_source_entry(source_name))
     for source_name, subsystem_state in (subsystem_states or {}).items():
         if source_name not in {"sec_edgar", "fred"} or not isinstance(subsystem_state, dict):
@@ -220,6 +220,7 @@ def default_source_health() -> dict:
             "stooq": default_source_entry("stooq"),
             "sec_edgar": default_source_entry("sec_edgar"),
             "fred": default_source_entry("fred"),
+            "cfpb": default_source_entry("cfpb"),
         },
     }
 

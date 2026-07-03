@@ -9,7 +9,12 @@ Varyn's local agent is a Python backend inspired by MARK XXXIX-OR's separation o
 - Keep OpenAI optional and disabled by default.
 - Store local session memory in `agent/data/memory.json`.
 - Run market lookup and structured risk-analysis tools.
+- Read cached official CFPB complaint aggregates for consumer-conduct and regulatory-signal context.
 - Return JSON that the HUD can speak and render.
+
+CFPB access is keyless. Its exact watchlist-company mappings, comparison window, throttling, and
+cache lifetime live under `cfpb` in `varyn.config.json`. Requests are on demand and cached; CFPB
+does not add another heartbeat polling loop.
 
 ## Setup
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from agent_core import run_agent_turn, run_agent_turn_stream
 from audit import get_audit_logger
+from cfpb import cfpb_status, get_complaint_signal
 from heartbeat import HeartbeatService
 from fred import fred_status, get_macro_context, get_macro_snapshot
 from market_data_store import source_health_status
@@ -142,6 +143,7 @@ def health():
             "market_data_validation": "yfinance + Stooq",
             "official_fundamentals": "SEC EDGAR companyfacts",
             "macro_context": "Federal Reserve Bank of St. Louis FRED",
+            "regulatory_signals": "CFPB Consumer Complaint Database",
             "safety_rails": True,
             "persistent_audit": True,
             "proactive_kill_switch": True,
@@ -150,6 +152,7 @@ def health():
         "source_health": current_source_health(),
         "sec_edgar": sec_status(),
         "fred": fred_status(),
+        "cfpb": cfpb_status(),
         "safety": safety.status(),
         "audit": audit.summary(),
     }
@@ -244,6 +247,17 @@ def sec_edgar_fundamentals(symbol: str, refresh: bool = False):
 @app.get("/fred/status")
 def fred_source_status():
     return fred_status()
+
+
+@app.get("/cfpb/status")
+def cfpb_source_status():
+    return cfpb_status()
+
+
+@app.get("/cfpb/{symbol}")
+def cfpb_company_signal(symbol: str, refresh: bool = False):
+    result = get_complaint_signal(symbol, force=refresh)
+    return {"ok": bool(result.get("found")), **result}
 
 
 @app.get("/fred/snapshot")

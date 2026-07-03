@@ -123,6 +123,7 @@ def build_risk_analysis(
     market_context: dict | None,
     market_contexts: list[dict] | None = None,
     macro_context: dict | None = None,
+    regulatory_signals: list[dict] | None = None,
 ) -> dict:
     scores = score_from_context(message, market_context)
     overall = round(sum(scores.values()) / len(scores))
@@ -161,6 +162,20 @@ def build_risk_analysis(
         credit_detail = f"{credit_detail} Macro context: {macro_reads[0]} {macro_label}"
         liquidity_detail = f"{liquidity_detail} Macro context: {' '.join(macro_reads[:2])} {macro_label}"
 
+    signals = regulatory_signals or []
+    primary_signal = next(
+        (item for item in signals if item.get("symbol") == symbol),
+        signals[0] if signals else None,
+    )
+    operational_detail = "Assess process resilience, vendor concentration, cyber exposure, continuity planning, and key-person dependency."
+    if primary_signal:
+        if primary_signal.get("applicable") and primary_signal.get("found"):
+            operational_detail = f"{operational_detail} Consumer-conduct context: {primary_signal.get('risk_read')}"
+        elif primary_signal.get("applicable") is False:
+            operational_detail = f"{operational_detail} CFPB complaint context is not applicable to this mapped company."
+        else:
+            operational_detail = f"{operational_detail} CFPB complaint context is currently unavailable; no inference was made."
+
     modules = [
         {
             "title": "Market Risk",
@@ -180,7 +195,7 @@ def build_risk_analysis(
         {
             "title": "Operational Risk",
             "score": str(scores["Operational Risk"]),
-            "detail": "Assess process resilience, vendor concentration, cyber exposure, continuity planning, and key-person dependency.",
+            "detail": operational_detail,
         },
     ]
 
@@ -228,6 +243,7 @@ def build_risk_analysis(
         "location": "Local Varyn risk engine",
         "source": "local risk engine",
         "macro_context": macro_context,
+        "regulatory_context": signals,
         "data_points": data_points,
         "drivers": [
             "Market movement and volatility context",
@@ -235,6 +251,7 @@ def build_risk_analysis(
             "Liquidity runway and short-term flexibility",
             "Operational resilience and dependency exposure",
             "Official FRED rates, yield-curve, inflation, and labor context",
+            "Official CFPB consumer-complaint trend context where applicable",
         ],
         "modules": modules,
         "actions": [

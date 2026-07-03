@@ -96,8 +96,8 @@ already exists), so they come AFTER the tiers.
    and always-on home remain unstarted.
 5. **Data-layer Phase 2 — SEC EDGAR** (official fundamentals/filings; keyless) — DONE.
 6. **Data-layer Phase 3 — FRED** (macro/risk context; free API key, no cost) — DONE.
-7. **Data-layer Phase 4 — supplemental APIs** (Alpha Vantage / Finnhub / FMP; free tiers, used
-   selectively, never as the core).
+7. **Data-layer Phase 4 — regulatory & enforcement signals** (official keyless CFPB complaint
+   aggregates; OCC/Federal Reserve feasibility documented for later increments) — DONE.
 8. **News & sentiment layer** — last, once the core data engine is stable.
 
 ### Future enhancement — bank-specific fundamentals mapping
@@ -505,3 +505,26 @@ registered) and lint/build passing after every item. Free and local always.
   Delivery failure is reported plainly, without presenting an inaccessible server path.
 - Python compilation, ESLint, and the Next.js production build pass. Phase 4, the news layer,
   bank-specific fundamentals, and all other Tier 7 features remain unstarted.
+
+### Data-layer Phase 4 verification — regulatory & enforcement signals
+
+- Confirmed the official CFPB complaint-search API is keyless and supports exact company filtering.
+  Added editable mappings for the full watchlist, including consumer-bank and captive-finance
+  entities, and an explicit non-applicable result for Nvidia.
+- Added a throttled, six-hour cached CFPB adapter comparing current and prior 90-day complaint
+  windows. Records retain a bounded local audit payload with the official aggregate, pull/data
+  timestamps, confidence, errors, and normalized consumer-conduct readout.
+- Added `regulatory_signals` to the unified tool registry and source-health panel. Applicable CFPB
+  context now enriches structured operational-risk analysis and appears as dated, attributed,
+  confidence-labelled deterministic evidence in Markdown, HTML, and PDF risk memos.
+- Complaint volume is explicitly unadjusted for company size and is never framed as proof of
+  wrongdoing. Missing/non-applicable data does not create a false zero or an error inference.
+- Kept the source on cached manual/on-demand refresh instead of the heartbeat to avoid a second
+  background polling burden on the free 512 MB hosting tier.
+- OCC enforcement is feasible later through its official search/CSV export and order documents;
+  no stable documented public API was identified. Federal Reserve enforcement is a strong future
+  candidate through its official keyless recent/historical JSON and CSV datasets. Neither was
+  integrated in this increment.
+- Phase 4 implementation passed Python compilation, focused CFPB cache/fallback/non-applicability
+  checks, live official JPM/MTB aggregate probes, memo provenance checks, frontend lint, and the
+  production build. Phase 4 stops here; the news layer and other Tier 7 work remain unstarted.
