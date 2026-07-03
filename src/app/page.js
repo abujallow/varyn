@@ -1582,31 +1582,35 @@ export default function Home() {
 
         <div className="vital-core">
           <div className="status-readout">{status}</div>
-          <button
-            className={`orbital-core ${pushToTalkHeld ? "is-held" : ""}`}
-            onPointerDown={beginPushToTalk}
-            onPointerUp={releasePushToTalk}
-            onPointerCancel={releasePushToTalk}
-            onPointerLeave={releasePushToTalk}
-            type="button"
-            aria-label={`Hold for Varyn push-to-talk. Keyboard key: ${pushToTalkKeyLabel(pushToTalkKey)}`}
-          >
-            <span className="orbit orbit-one" />
-            <span className="orbit orbit-two" />
-            <span className="orbit orbit-three" />
-            <span className="orbit orbit-four" />
-            <span className="orbit orbit-five" />
-            <span className="scan-line" />
-            <span className="scan-line scan-line-secondary" />
-            <span className="crosshair crosshair-x" />
-            <span className="crosshair crosshair-y" />
-            <span className="pulse-ring pulse-one" />
-            <span className="pulse-ring pulse-two" />
-            <span className="core-glass">
-              <strong>VARYN</strong>
-              <small>{state}</small>
-            </span>
-          </button>
+          <div className="orbital-core-frame">
+            <button
+              className={`orbital-core ${pushToTalkHeld ? "is-held" : ""}`}
+              onPointerDown={beginPushToTalk}
+              onPointerUp={releasePushToTalk}
+              onPointerCancel={releasePushToTalk}
+              onPointerLeave={releasePushToTalk}
+              type="button"
+              aria-label={`Hold for Varyn push-to-talk. Keyboard key: ${pushToTalkKeyLabel(pushToTalkKey)}`}
+            >
+              <span className="orbit orbit-one" />
+              <span className="orbit orbit-two" />
+              <span className="orbit orbit-three" />
+              <span className="orbit orbit-four" />
+              <span className="orbit orbit-five" />
+              <span className="scan-line" />
+              <span className="scan-line scan-line-secondary" />
+              <span className="crosshair crosshair-x" />
+              <span className="crosshair crosshair-y" />
+              <span className="pulse-ring pulse-one" />
+              <span className="pulse-ring pulse-two" />
+              <span className="core-glass">
+                <strong>VARYN</strong>
+              </span>
+            </button>
+            <div className="core-state-readout" aria-live="polite">
+              {state}
+            </div>
+          </div>
           <div className="waveform" aria-hidden="true">
             {Array.from({ length: 36 }).map((_, index) => (
               <span key={index} style={{ "--i": index }} />
