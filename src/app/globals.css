@@ -648,6 +648,7 @@ input:focus-visible {
   justify-items: center;
   min-height: 0;
   min-width: 0;
+  padding-top: 1.1rem;
   position: relative;
   z-index: 2;
 }

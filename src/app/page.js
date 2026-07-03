@@ -16,7 +16,7 @@ const initialEvents = [
   { type: "risk", label: "Risk engine active" },
 ];
 
-const STARFIELD_STARS = Array.from({ length: 100 }, (_, index) => {
+const STARFIELD_STARS = Array.from({ length: 400 }, (_, index) => {
   const pairIndex = Math.floor(index / 2);
   const isLeft = index % 2 === 0;
   const left = isLeft
