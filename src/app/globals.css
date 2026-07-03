@@ -584,7 +584,7 @@ input:focus-visible {
 
 .orbital-field::before,
 .orbital-field::after {
-  animation: starfield-drift 42s linear infinite;
+  animation: starfield-drift 36s linear infinite;
   background-image:
     radial-gradient(circle, rgba(244, 246, 249, 0.72) 0 1px, transparent 1.35px),
     radial-gradient(circle, rgba(178, 194, 216, 0.52) 0 0.8px, transparent 1.2px),
@@ -601,7 +601,7 @@ input:focus-visible {
 
 .orbital-field::after {
   animation-direction: reverse;
-  animation-duration: 58s;
+  animation-duration: 50s;
   background-position: 83px 41px, 19px 101px, 127px 7px;
   inset: 3% 12%;
   opacity: 0.16;
@@ -609,7 +609,7 @@ input:focus-visible {
 }
 
 .star {
-  animation: drift 12s ease-in-out infinite;
+  animation: drift 10.5s ease-in-out infinite;
   background: rgba(var(--accent-bright-rgb), 0.62);
   border-radius: 50%;
   box-shadow: 0 0 8px rgba(var(--accent-soft-rgb), 0.42);
@@ -618,12 +618,16 @@ input:focus-visible {
   width: 2px;
 }
 
-.star-a { left: 38%; top: 34%; }
-.star-b { animation-delay: -2s; left: 57%; top: 35%; }
-.star-c { animation-delay: -4s; left: 43%; top: 61%; }
-.star-d { animation-delay: -6s; left: 62%; top: 57%; }
-.star-e { animation-delay: -8s; left: 50%; top: 28%; }
-.star-f { animation-delay: -10s; left: 35%; top: 52%; }
+.star-a { left: 18%; top: 25%; }
+.star-b { animation-delay: -1.1s; left: 82%; top: 25%; }
+.star-c { animation-delay: -2.2s; left: 12%; top: 52%; }
+.star-d { animation-delay: -3.3s; left: 88%; top: 52%; }
+.star-e { animation-delay: -4.4s; left: 25%; top: 77%; }
+.star-f { animation-delay: -5.5s; left: 75%; top: 77%; }
+.star-g { animation-delay: -6.6s; left: 35%; top: 17%; }
+.star-h { animation-delay: -7.7s; left: 65%; top: 17%; }
+.star-i { animation-delay: -8.8s; left: 38%; top: 88%; }
+.star-j { animation-delay: -9.9s; left: 62%; top: 88%; }
 
 .sweep-line {
   background: linear-gradient(90deg, transparent, rgba(var(--accent-bright-rgb), 0.3), transparent);

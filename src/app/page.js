@@ -1561,6 +1561,10 @@ export default function Home() {
           <span className="star star-d" />
           <span className="star star-e" />
           <span className="star star-f" />
+          <span className="star star-g" />
+          <span className="star star-h" />
+          <span className="star star-i" />
+          <span className="star star-j" />
           <span className="sweep-line sweep-a" />
           <span className="sweep-line sweep-b" />
         </div>
