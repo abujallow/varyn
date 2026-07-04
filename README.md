@@ -1,13 +1,57 @@
+<div align="center">
+
 # Varyn
 
-Varyn is a local-first AI risk intelligence command system with a Next.js HUD and a Python agent backend.
+### AI Risk Intelligence Command System
+
+**By Abubakr Jallow**
+
+[Live Demo](https://varyn-ai.vercel.app) · [Backend Health](https://varyn.onrender.com/health)
+
+</div>
+
+![Varyn](public/brand/varyn-lockup.png)
+
+Varyn is a local-first AI risk intelligence command system with a Next.js HUD and a Python agent backend. It turns fragmented public market, fundamental, macroeconomic, and regulatory data into explainable, source-backed risk analysis, cross-validating figures across independent sources and scoring its own confidence in each one.
+
+>  **Disclaimer:** Varyn produces preliminary risk analysis for informational and portfolio-demonstration purposes only. It is not financial, credit, investment, or legal advice.
+
+---
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Agent Core](#agent-core)
+- [Market Data & Price Validation](#market-data--price-validation)
+- [Durable Memory](#durable-memory)
+- [Local Telemetry](#local-telemetry)
+- [Heartbeat](#heartbeat)
+- [Official Fundamentals](#official-fundamentals)
+- [Macroeconomic Risk Context](#macroeconomic-risk-context)
+- [Regulatory & Compliance Signal (CFPB)](#regulatory--compliance-signal-cfpb)
+- [Safety Rails](#safety-rails)
+- [Exportable Risk Memo](#exportable-risk-memo)
+- [Streaming and Stable HUD](#streaming-and-stable-hud)
+- [Browser Voice Reliability](#browser-voice-reliability)
+- [HUD Controls](#hud-controls)
+- [Live Demo](#live-demo)
+- [Local Preview](#local-preview)
+- [Provider Setup](#provider-setup)
+- [Deployment](#deployment)
+- [Roadmap](#roadmap)
+- [Limitations](#limitations)
+- [Why I Built This](#why-i-built-this)
+- [About](#about)
+- [License](#license)
+
+---
 
 ## Architecture
 
 ```text
-Next.js HUD
+Next.js HUD (Vercel)
   -> Next.js chat/upload/session proxies
-    -> FastAPI agent at http://127.0.0.1:8788
+    -> FastAPI agent (Render)
       -> unified agent loop
         -> registered market, risk, and active-file tools
         -> OpenRouter primary/fallback reasoning
@@ -16,11 +60,17 @@ Next.js HUD
 
 OpenAI billing is not required. The agent uses OpenRouter when `OPENROUTER_API_KEY` is configured, tries `OPENROUTER_MODEL` first, and then tries `OPENROUTER_FALLBACK_MODEL`. Gemini remains optional and is not required. If no supported provider is available, Varyn reports local offline mode clearly while keeping local tools available.
 
+In production, the frontend and backend run as two separately deployed services (see [Deployment](#deployment)) rather than on localhost, but the request path is identical — the frontend never calls OpenRouter or any data provider directly, only its own backend.
+
 ## Agent Core
 
 Every typed or transcribed turn enters the same backend agent loop. Capabilities are registered in `agent/tools/registry.py`, and the model may call several tools before answering. Native OpenRouter tool calls are preferred. A strictly parsed JSON action protocol is accepted when a free model does not return native calls. The previous deterministic selection rules remain only as a graceful fallback.
 
 The HUD receives structured analysis only when the `risk_analysis` tool actually returns an analysis object. Conceptual questions therefore remain conversational.
+
+## Market Data & Price Validation
+
+Varyn's market tool uses yfinance as its primary live/free price and fundamentals source, with Stooq as an independent daily-price cross-check rather than a single trusted feed. Company-name and ticker resolution runs through a curated alias fast path backed by a broader dynamic lookup, so the watchlist and ad hoc queries both resolve reliably (see [HUD Controls](#hud-controls) for how source status is surfaced, and [Regulatory & Compliance Signal (CFPB)](#regulatory--compliance-signal-cfpb) for where bank-specific data augments this).
 
 ## Durable Memory
 
@@ -34,21 +84,17 @@ The FastAPI agent exposes read-only system measurements at `GET /telemetry` usin
 
 GPU utilization and temperature display `N/A` when the operating system does not provide a reliable local sensor through the free monitor. Varyn never substitutes simulated values for unavailable measurements.
 
+> In the deployed environment, these metrics reflect Render's Linux container rather than your own machine — this is expected. Memory in particular reads container-wide pressure rather than Varyn's own process footprint, so it sits at a stable, higher baseline than a typical local run.
+
 ## Heartbeat
 
 The FastAPI agent runs a background market-watch service independently from chat requests. Its watchlist, thresholds, interval, timeout, and quiet hours live in `agent/varyn.config.json`. The default watchlist is `TSLA`, `F`, `GM`, `NVDA`, `JPM`, `BAC`, and `MTB`.
 
 The heartbeat batches free yfinance history, calculates latest daily and five-session moves, applies Varyn's preliminary local risk score, and persists its schedule and notices in the git-ignored `agent/data/heartbeat_state.json`. Active-condition fingerprints prevent repeat alerts while a condition remains breached. A slow check cannot overlap its successor.
 
-Routine scans remain in bounded local history. Material notices are held across HUD closures and restarts, deferred during 22:00-08:00 quiet hours unless critical, and exposed through `GET /heartbeat`. The HUD polls the local proxy and renders every surfaced notice with a dismiss control.
+Routine scans remain in bounded local history. Material notices are held across HUD closures and restarts, deferred during 22:00–08:00 quiet hours unless critical, and exposed through `GET /heartbeat`. The HUD polls the local proxy and renders every surfaced notice with a dismiss control.
 
-## Streaming and Stable HUD
-
-The primary chat path uses Server-Sent Events from OpenRouter through FastAPI and the Next.js proxy. Final-answer tokens render as they arrive; native tool-call deltas remain internal until the selected tools finish. The buffered `/chat` endpoint remains available for compatibility and direct tests.
-
-Session writes are serialized on a background worker after streaming begins. Durable facts are selected by query relevance rather than copied wholesale into every prompt. The desktop HUD is viewport-anchored, with internally scrolling activity and response panels, so new output does not move the Varyn core.
-
-The market ticker reads only the heartbeat's cached snapshot; its CSS marquee adds no market requests or polling loop.
+CFPB regulatory data is deliberately kept outside this heartbeat loop — see below.
 
 ## Official Fundamentals
 
@@ -69,6 +115,8 @@ request on every turn. Raw responses, mapped output, health history, and pull au
 local and git-ignored. Status is available at `GET /sec/status`; cached/on-demand fundamentals are
 available at `GET /sec/fundamentals/{symbol}`.
 
+Bank-specific fundamentals (deposits, loan-to-deposit ratio, Tier 1 capital, net interest margin) are not yet mapped — see [Roadmap](#roadmap). Bank tickers currently return "Not available" for generic corporate ratios rather than a misleading value.
+
 ## Macroeconomic Risk Context
 
 FRED is Varyn's official macroeconomic context layer. The free `FRED_API_KEY` is loaded only from
@@ -87,6 +135,33 @@ The local risk engine uses the cached rates, yield curve, inflation, and labor b
 narrative context without mechanically changing company risk scores. Status and cached values are
 available at `GET /fred/status`, `GET /fred/snapshot`, and `GET /fred/context`; the HUD source-health
 rail includes FRED alongside yfinance, Stooq, and SEC EDGAR.
+
+## Regulatory & Compliance Signal (CFPB)
+
+The CFPB Consumer Complaint Database is Varyn's fourth data layer — a keyless, cached, regulatory/compliance signal that follows the same provenance pattern as SEC EDGAR and FRED (source, pull timestamp, and confidence recorded alongside every value). Unlike the sources above, it is fetched on-demand only and deliberately kept outside the heartbeat worker, to avoid adding background polling load on top of the existing scheduled refreshes.
+
+Consumer complaint data applies mainly to the watchlist's bank tickers (JPM, BAC, MTB), since it has no equivalent for TSLA, F, GM, or NVDA. It feeds into the same confidence-scoring, risk analysis, audit records, and Exportable Risk Memo output as every other source, rather than through a separate code path.
+
+## Safety Rails
+
+Because Varyn monitors its watchlist proactively and pulls from external data sources, it runs under four safety mechanisms:
+
+- **Confirmation gate** — high-impact or export actions (like generating a memo) require explicit confirmation before they run
+- **Prompt-injection defense** — instructions embedded in fetched data or uploaded files are treated as data, never as commands
+- **Persistent audit trail** — a durable JSONL log records actions and decisions for later review
+- **Kill switch** — the `Pause Monitoring` HUD control (see [HUD Controls](#hud-controls)) immediately halts heartbeat activity while ordinary chat remains available
+
+## Exportable Risk Memo
+
+Varyn's most decision-maker-facing output: a confirmation-gated, audit-logged export combining deterministic data tables with an LLM-written Analyst Narrative, plus full source/date/confidence provenance for every figure it contains. Available in Markdown, HTML, and PDF (PDF export via ReportLab), with in-browser download buttons for all three formats.
+
+## Streaming and Stable HUD
+
+The primary chat path uses Server-Sent Events from OpenRouter through FastAPI and the Next.js proxy. Final-answer tokens render as they arrive; native tool-call deltas remain internal until the selected tools finish. The buffered `/chat` endpoint remains available for compatibility and direct tests.
+
+Session writes are serialized on a background worker after streaming begins. Durable facts are selected by query relevance rather than copied wholesale into every prompt. The desktop HUD is viewport-anchored, with internally scrolling activity and response panels, so new output does not move the Varyn core.
+
+The market ticker reads only the heartbeat's cached snapshot; its CSS marquee adds no market requests or polling loop.
 
 ## Browser Voice Reliability
 
@@ -118,11 +193,18 @@ heartbeat/background work while ordinary chat remains available.
 The top status bar includes a native fullscreen toggle. Fullscreen uses the same viewport-anchored
 HUD grid, exits through the control or Escape, and does not create a second layout. The system
 monitor displays only real browser-visible psutil metrics: CPU, memory, network, uptime, process
-count, and OS. Source-health rows display each source's own Active, Degraded, or Unavailable state;
-Stooq remains the independent daily-price validator and is reported honestly when its public
-endpoint is gated.
+count, and OS. Source-health rows display each source's own Active, Degraded, or Unavailable state.
+
+In the deployed environment, Stooq's status row is currently hidden from this panel — Render's outbound IP is blocked/rate-limited by Stooq's public endpoint consistently enough that surfacing it as a permanent red flag wasn't useful. Source-health tracking for Stooq continues in the background and remains part of the underlying audit data; it's a display-only omission, not a removed check.
 
 The approved elevation decisions and tier order are recorded in `VARYN.md`.
+
+## Live Demo
+
+- **Frontend (HUD):** https://varyn-ai.vercel.app
+- **Backend health check:** https://varyn.onrender.com/health
+
+The backend runs on Render's free tier and is kept warm by a cron job hitting a lightweight `/ping` endpoint every 5 minutes. If you hit it after a long idle period, allow a few seconds for a cold start.
 
 ## Local Preview
 
@@ -154,12 +236,13 @@ cd C:\varyn\agent
 copy .env.example .env
 ```
 
-Configure OpenRouter without committing the local `.env` file:
+Configure OpenRouter and FRED without committing the local `.env` file:
 
 ```text
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=openai/gpt-oss-20b:free
 OPENROUTER_FALLBACK_MODEL=openrouter/free
+FRED_API_KEY=
 ```
 
 The Next.js proxy reads `VARYN_AGENT_URL` from `C:\varyn\.env.local`. The local default is:
@@ -167,3 +250,38 @@ The Next.js proxy reads `VARYN_AGENT_URL` from `C:\varyn\.env.local`. The local 
 ```text
 VARYN_AGENT_URL=http://127.0.0.1:8788
 ```
+
+## Deployment
+
+| Service | Platform | Notes |
+|---|---|---|
+| Backend | Render.com | Root directory `agent`; Python pinned to 3.11 via `runtime.txt`/`.python-version`; numpy pinned to 1.26.4; auto-deploys on changes inside `/agent` |
+| Frontend | Vercel | Production domain `varyn-ai.vercel.app`; auto-deploys on any push to `main` |
+| Keep-alive | cron-job.org | Hits `GET /ping` every 5 minutes to prevent Render's free-tier 15-minute spin-down |
+
+Render supplies `PORT` automatically. `FRONTEND_URL` and `PYTHON_VERSION` are supplied via `render.yaml`. On Vercel, only `VARYN_AGENT_URL` (pointing at the Render backend's HTTPS URL) is required — provider API keys are never stored on the frontend.
+
+## Roadmap
+
+- [ ] Bank/financial-institution-specific fundamentals mapping (deposits, loan-to-deposit ratio, Tier 1 capital, net interest margin)
+- [ ] Optional news/sentiment data layer
+- [ ] Optional extension of the compliance layer using Federal Reserve enforcement-action data
+- [ ] Spoken-date formatting for voice output (ISO dates → natural speech)
+- [ ] Private differentiator — built separately with security and IP protection
+
+## Limitations
+
+- Market, credit, and compliance-signal analysis are preliminary — not financial, credit, or legal advice
+- Free-tier LLM reasoning can be slower or more variable than paid models
+- Bank fundamentals are not yet fully mapped (see [Roadmap](#roadmap))
+- Render's free tier caps available memory at 512MB; the keep-alive job mitigates cold starts but doesn't eliminate all latency
+
+## Why I Built This
+
+I'm a Finance and Data Science student with hands-on experience in banking, operational reporting automation, and risk management. Varyn started as a way to prove I could build a serious AI system end to end — not just prompt an API, but design a tool-calling agent, validate data across multiple official sources, add real safety rails, and ship something live. It's the technical foundation and proof-of-work behind my longer-term interest in operational risk intelligence for organizations that don't have the infrastructure of a large financial institution.
+
+## About
+
+**Abubakr Jallow**
+Finance & Data Science, Canisius College
+[LinkedIn](https://www.linkedin.com/in/abubakr1/) · [GitHub](https://github.com/abujallow/varyn)
