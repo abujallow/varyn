@@ -58,7 +58,7 @@ Next.js HUD (Vercel)
 
 OpenAI billing is not required. The agent uses OpenRouter when `OPENROUTER_API_KEY` is configured, tries `OPENROUTER_MODEL` first, and then tries `OPENROUTER_FALLBACK_MODEL`. Gemini remains optional and is not required. If no supported provider is available, Varyn reports local offline mode clearly while keeping local tools available.
 
-In production, the frontend and backend run as two separately deployed services (see [Deployment](#deployment)) rather than on localhost, but the request path is identical — the frontend never calls OpenRouter or any data provider directly, only its own backend.
+In production, the frontend and backend run as two separately deployed services (see [Deployment](#deployment)) rather than on localhost, but the request path is identical, the frontend never calls OpenRouter or any data provider directly, only its own backend.
 
 ## Agent Core
 
@@ -82,7 +82,7 @@ The FastAPI agent exposes read-only system measurements at `GET /telemetry` usin
 
 GPU utilization and temperature display `N/A` when the operating system does not provide a reliable local sensor through the free monitor. Varyn never substitutes simulated values for unavailable measurements.
 
-> In the deployed environment, these metrics reflect Render's Linux container rather than your own machine — this is expected. Memory in particular reads container-wide pressure rather than Varyn's own process footprint, so it sits at a stable, higher baseline than a typical local run.
+> In the deployed environment, these metrics reflect Render's Linux container rather than your own machine, this is expected. Memory in particular reads container-wide pressure rather than Varyn's own process footprint, so it sits at a stable, higher baseline than a typical local run.
 
 ## Heartbeat
 
@@ -92,7 +92,7 @@ The heartbeat batches free yfinance history, calculates latest daily and five-se
 
 Routine scans remain in bounded local history. Material notices are held across HUD closures and restarts, deferred during 22:00–08:00 quiet hours unless critical, and exposed through `GET /heartbeat`. The HUD polls the local proxy and renders every surfaced notice with a dismiss control.
 
-CFPB regulatory data is deliberately kept outside this heartbeat loop — see below.
+CFPB regulatory data is deliberately kept outside this heartbeat loop, see below.
 
 ## Official Fundamentals
 
@@ -113,7 +113,7 @@ request on every turn. Raw responses, mapped output, health history, and pull au
 local and git-ignored. Status is available at `GET /sec/status`; cached/on-demand fundamentals are
 available at `GET /sec/fundamentals/{symbol}`.
 
-Bank-specific fundamentals (deposits, loan-to-deposit ratio, Tier 1 capital, net interest margin) are not yet mapped — see [Roadmap](#roadmap). Bank tickers currently return "Not available" for generic corporate ratios rather than a misleading value.
+Bank-specific fundamentals (deposits, loan-to-deposit ratio, Tier 1 capital, net interest margin) are not yet mapped, see [Roadmap](#roadmap). Bank tickers currently return "Not available" for generic corporate ratios rather than a misleading value.
 
 ## Macroeconomic Risk Context
 
@@ -136,7 +136,7 @@ rail includes FRED alongside yfinance, Stooq, and SEC EDGAR.
 
 ## Regulatory & Compliance Signal (CFPB)
 
-The CFPB Consumer Complaint Database is Varyn's fourth data layer — a keyless, cached, regulatory/compliance signal that follows the same provenance pattern as SEC EDGAR and FRED (source, pull timestamp, and confidence recorded alongside every value). Unlike the sources above, it is fetched on-demand only and deliberately kept outside the heartbeat worker, to avoid adding background polling load on top of the existing scheduled refreshes.
+The CFPB Consumer Complaint Database is Varyn's fourth data layer, a keyless, cached, regulatory/compliance signal that follows the same provenance pattern as SEC EDGAR and FRED (source, pull timestamp, and confidence recorded alongside every value). Unlike the sources above, it is fetched on-demand only and deliberately kept outside the heartbeat worker, to avoid adding background polling load on top of the existing scheduled refreshes.
 
 Consumer complaint data applies mainly to the watchlist's bank tickers (JPM, BAC, MTB), since it has no equivalent for TSLA, F, GM, or NVDA. It feeds into the same confidence-scoring, risk analysis, audit records, and Exportable Risk Memo output as every other source, rather than through a separate code path.
 
@@ -144,10 +144,10 @@ Consumer complaint data applies mainly to the watchlist's bank tickers (JPM, BAC
 
 Because Varyn monitors its watchlist proactively and pulls from external data sources, it runs under four safety mechanisms:
 
-- **Confirmation gate** — high-impact or export actions (like generating a memo) require explicit confirmation before they run
-- **Prompt-injection defense** — instructions embedded in fetched data or uploaded files are treated as data, never as commands
-- **Persistent audit trail** — a durable JSONL log records actions and decisions for later review
-- **Kill switch** — the `Pause Monitoring` HUD control (see [HUD Controls](#hud-controls)) immediately halts heartbeat activity while ordinary chat remains available
+- **Confirmation gate**, high-impact or export actions (like generating a memo) require explicit confirmation before they run
+- **Prompt-injection defense**, instructions embedded in fetched data or uploaded files are treated as data, never as commands
+- **Persistent audit trail**, a durable JSONL log records actions and decisions for later review
+- **Kill switch**, the `Pause Monitoring` HUD control (see [HUD Controls](#hud-controls)) immediately halts heartbeat activity while ordinary chat remains available
 
 ## Exportable Risk Memo
 
@@ -193,7 +193,7 @@ HUD grid, exits through the control or Escape, and does not create a second layo
 monitor displays only real browser-visible psutil metrics: CPU, memory, network, uptime, process
 count, and OS. Source-health rows display each source's own Active, Degraded, or Unavailable state.
 
-In the deployed environment, Stooq's status row is currently hidden from this panel — Render's outbound IP is blocked/rate-limited by Stooq's public endpoint consistently enough that surfacing it as a permanent red flag wasn't useful. Source-health tracking for Stooq continues in the background and remains part of the underlying audit data; it's a display-only omission, not a removed check.
+In the deployed environment, Stooq's status row is currently hidden from this panel, Render's outbound IP is blocked/rate-limited by Stooq's public endpoint consistently enough that surfacing it as a permanent red flag wasn't useful. Source-health tracking for Stooq continues in the background and remains part of the underlying audit data; it's a display-only omission, not a removed check.
 
 The approved elevation decisions and tier order are recorded in `VARYN.md`.
 
@@ -257,7 +257,7 @@ VARYN_AGENT_URL=http://127.0.0.1:8788
 | Frontend | Vercel | Production domain `varyn-ai.vercel.app`; auto-deploys on any push to `main` |
 | Keep-alive | cron-job.org | Hits `GET /ping` every 5 minutes to prevent Render's free-tier 15-minute spin-down |
 
-Render supplies `PORT` automatically. `FRONTEND_URL` and `PYTHON_VERSION` are supplied via `render.yaml`. On Vercel, only `VARYN_AGENT_URL` (pointing at the Render backend's HTTPS URL) is required — provider API keys are never stored on the frontend.
+Render supplies `PORT` automatically. `FRONTEND_URL` and `PYTHON_VERSION` are supplied via `render.yaml`. On Vercel, only `VARYN_AGENT_URL` (pointing at the Render backend's HTTPS URL) is required, provider API keys are never stored on the frontend.
 
 ## Roadmap
 
@@ -265,18 +265,18 @@ Render supplies `PORT` automatically. `FRONTEND_URL` and `PYTHON_VERSION` are su
 - [ ] Optional news/sentiment data layer
 - [ ] Optional extension of the compliance layer using Federal Reserve enforcement-action data
 - [ ] Spoken-date formatting for voice output (ISO dates → natural speech)
-- [ ] Private differentiator — built separately with security and IP protection
+- [ ] Private differentiator, built separately with security and IP protection
 
 ## Limitations
 
-- Market, credit, and compliance-signal analysis are preliminary — not financial, credit, or legal advice
+- Market, credit, and compliance-signal analysis are preliminary, not financial, credit, or legal advice
 - Free-tier LLM reasoning can be slower or more variable than paid models
 - Bank fundamentals are not yet fully mapped (see [Roadmap](#roadmap))
 - Render's free tier caps available memory at 512MB; the keep-alive job mitigates cold starts but doesn't eliminate all latency
 
 ## Why I Built This
 
-I'm a Finance and Data Science student with hands-on experience in banking, operational reporting automation, and risk management. Varyn started as a way to prove I could build a serious AI system end to end — not just prompt an API, but design a tool-calling agent, validate data across multiple official sources, add real safety rails, and ship something live. It's the technical foundation and proof-of-work behind my longer-term interest in operational risk intelligence for organizations that don't have the infrastructure of a large financial institution.
+I'm a Finance and Data Science student with hands-on experience in banking, operational reporting automation, and risk management. Varyn started as a way to prove I could build a serious AI system end to end, not just prompt an API, but design a tool-calling agent, validate data across multiple official sources, add real safety rails, and ship something live. It's the technical foundation and proof-of-work behind my longer-term interest in operational risk intelligence for organizations that don't have the infrastructure of a large financial institution.
 
 ## About
 
