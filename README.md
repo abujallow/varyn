@@ -10,8 +10,6 @@
 
 </div>
 
-![Varyn](public/brand/varyn-lockup.png)
-
 Varyn is a local-first AI risk intelligence command system with a Next.js HUD and a Python agent backend. It turns fragmented public market, fundamental, macroeconomic, and regulatory data into explainable, source-backed risk analysis, cross-validating figures across independent sources and scoring its own confidence in each one.
 
 >  **Disclaimer:** Varyn produces preliminary risk analysis for informational and portfolio-demonstration purposes only. It is not financial, credit, investment, or legal advice.
