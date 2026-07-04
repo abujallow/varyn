@@ -1561,7 +1561,6 @@ export default function Home() {
             ["Memory", system.memory],
             ["Risk", system.risk],
             ["Market", system.market],
-            ["Data", system.data],
             ["Heartbeat", system.heartbeat],
             ["Voice", system.voice],
           ].map(([label, value]) => (
