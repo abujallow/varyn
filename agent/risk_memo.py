@@ -4,6 +4,7 @@ import base64
 import html
 import io
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -808,7 +809,21 @@ def delivery_status(artifacts: list[dict]) -> str:
     return "partial" if artifacts else "unavailable"
 
 
+def local_memo_copies_enabled() -> bool:
+    override = os.getenv("VARYN_PERSIST_MEMO_COPIES", "").strip().casefold()
+    if override in {"1", "true", "yes", "on"}:
+        return True
+    if override in {"0", "false", "no", "off"}:
+        return False
+    return bool(setting("risk_memo.local_audit_copies", True))
+
+
 def persist_optional_audit_copies(entries) -> dict:
+    if not local_memo_copies_enabled():
+        return {
+            format_name: {"written": False, "path": str(path), "reason": "local copies disabled"}
+            for format_name, path, _content in entries
+        }
     results = {}
     for format_name, path, content in entries:
         try:

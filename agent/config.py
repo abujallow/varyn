@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 AGENT_DIR = Path(__file__).resolve().parent
-DATA_DIR = AGENT_DIR / "data"
+DATA_DIR = Path(os.getenv("VARYN_DATA_DIR", "")) if os.getenv("VARYN_DATA_DIR") else AGENT_DIR / "data"
 
 
 def load_base_config() -> dict:

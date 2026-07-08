@@ -1,24 +1,100 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
+import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import requests
 
 from config import DATA_DIR
 
 
+class _LocalFileBackend:
+    """Stores durable facts in a local JSON file. Used when no Upstash Redis is configured."""
+
+    name = "local_file"
+
+    def __init__(self, path: Path) -> None:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self.path = path
+        if not self.path.exists():
+            self.write_raw(json.dumps({"version": 1, "facts": []}))
+
+    def read_raw(self) -> str | None:
+        if not self.path.exists():
+            return None
+        return self.path.read_text(encoding="utf-8")
+
+    def write_raw(self, text: str) -> None:
+        temp_path = self.path.with_suffix(".tmp")
+        temp_path.write_text(text, encoding="utf-8")
+        temp_path.replace(self.path)
+
+    def describe(self) -> str:
+        return str(self.path)
+
+
+class _UpstashBackend:
+    """Stores durable facts as a single JSON value in Upstash Redis via its REST API.
+
+    This survives Render restarts/redeploys, unlike the local filesystem, and reuses
+    the same Upstash database already configured for Vercel's rate limiter.
+    """
+
+    name = "upstash_redis"
+
+    def __init__(self, url: str, token: str, key: str = "varyn:long_term_memory") -> None:
+        self._url = url.rstrip("/")
+        self._headers = {"Authorization": f"Bearer {token}"}
+        self._key = key
+
+    def read_raw(self) -> str | None:
+        try:
+            response = requests.get(f"{self._url}/get/{self._key}", headers=self._headers, timeout=5)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise RuntimeError("Durable memory (Upstash) could not be read.") from exc
+        return response.json().get("result")
+
+    def write_raw(self, text: str) -> None:
+        try:
+            response = requests.post(
+                f"{self._url}/set/{self._key}",
+                headers=self._headers,
+                data=text.encode("utf-8"),
+                timeout=5,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise RuntimeError("Durable memory (Upstash) could not be written.") from exc
+
+    def describe(self) -> str:
+        return f"upstash:{self._key}"
+
+
+def _long_term_memory_backend(path: Path | None):
+    url = os.getenv("KV_REST_API_URL", "").strip()
+    token = os.getenv("KV_REST_API_TOKEN", "").strip()
+    if url and token:
+        return _UpstashBackend(url, token)
+    return _LocalFileBackend(path or DATA_DIR / "long_term_memory.json")
+
+
 class LongTermMemoryStore:
-    """Durable, user-auditable facts kept separate from session and file context."""
+    """Durable, user-auditable facts kept separate from session and file context.
+
+    Backed by Upstash Redis when KV_REST_API_URL/KV_REST_API_TOKEN are present (hosted),
+    otherwise a local JSON file (local dev) — same interface either way.
+    """
 
     def __init__(self, path: Path | None = None) -> None:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        self.path = path or DATA_DIR / "long_term_memory.json"
+        self._backend = _long_term_memory_backend(path)
         self._lock = threading.RLock()
-        if not self.path.exists():
-            self._write({"version": 1, "facts": []})
 
     def list_facts(self) -> list[dict]:
         with self._lock:
@@ -95,18 +171,21 @@ class LongTermMemoryStore:
         return {
             "active": True,
             "fact_count": len(facts),
-            "path": str(self.path),
+            "backend": self._backend.name,
+            "durable": True,
+            "path": self._backend.describe(),
         }
 
     def _read(self) -> dict:
-        if not self.path.exists():
+        raw_text = self._backend.read_raw()
+        if not raw_text:
             return {"version": 1, "facts": []}
 
         try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
+            raw = json.loads(raw_text)
+        except json.JSONDecodeError as exc:
             raise RuntimeError(
-                "Durable memory could not be read. Correct long_term_memory.json and retry."
+                "Durable memory could not be read. Correct the stored value and retry."
             ) from exc
 
         if isinstance(raw, list):
@@ -132,12 +211,7 @@ class LongTermMemoryStore:
         return {"version": 1, "facts": facts}
 
     def _write(self, data: dict) -> None:
-        temp_path = self.path.with_suffix(".tmp")
-        temp_path.write_text(
-            json.dumps(data, indent=2, ensure_ascii=True) + "\n",
-            encoding="utf-8",
-        )
-        temp_path.replace(self.path)
+        self._backend.write_raw(json.dumps(data, indent=2, ensure_ascii=True) + "\n")
 
 
 def normalize_fact(statement: str) -> str:
@@ -189,12 +263,22 @@ MEMORY_TOKEN_ALIASES = {
 }
 
 
+SESSION_TTL_HOURS = float(os.getenv("VARYN_SESSION_TTL_HOURS", "48"))
+SESSION_PRUNE_INTERVAL_SECONDS = 3600
+
+
 class MemoryStore:
+    """Per-session chat memory. Intentionally ephemeral — sessions older than
+    SESSION_TTL_HOURS are pruned so a public demo doesn't accumulate unbounded
+    session entries between restarts."""
+
     def __init__(self) -> None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.path = DATA_DIR / "memory.json"
         self._lock = threading.RLock()
+        self._last_prune_monotonic = 0.0
         self.data = self._load()
+        self._prune_stale_sessions_locked()
 
     def _load(self) -> dict:
         if not self.path.exists():
@@ -210,8 +294,52 @@ class MemoryStore:
     def _save(self) -> None:
         self.path.write_text(json.dumps(self.data, indent=2), encoding="utf-8")
 
+    @staticmethod
+    def _is_stale(timestamp: str | None, cutoff: datetime) -> bool:
+        if not timestamp:
+            return True
+        try:
+            parsed = datetime.fromisoformat(timestamp)
+        except (TypeError, ValueError):
+            return True
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed < cutoff
+
+    def _prune_stale_sessions_locked(self) -> None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=SESSION_TTL_HOURS)
+        sessions = self.data.setdefault("sessions", {})
+        files = self.data.setdefault("files", {})
+
+        stale_sessions = [
+            session_id
+            for session_id, turns in sessions.items()
+            if self._is_stale(turns[-1].get("timestamp") if turns else None, cutoff)
+        ]
+        for session_id in stale_sessions:
+            sessions.pop(session_id, None)
+
+        stale_files = [
+            session_id
+            for session_id, context in files.items()
+            if session_id not in sessions and self._is_stale(context.get("loaded_at"), cutoff)
+        ]
+        for session_id in stale_files:
+            files.pop(session_id, None)
+
+        if stale_sessions or stale_files:
+            self._save()
+
+    def _maybe_prune_stale_sessions(self) -> None:
+        now = time.monotonic()
+        if now - self._last_prune_monotonic < SESSION_PRUNE_INTERVAL_SECONDS:
+            return
+        self._last_prune_monotonic = now
+        self._prune_stale_sessions_locked()
+
     def add_turn(self, session_id: str, role: str, content: str) -> None:
         with self._lock:
+            self._maybe_prune_stale_sessions()
             sessions = self.data.setdefault("sessions", {})
             session = sessions.setdefault(session_id, [])
             session.append(

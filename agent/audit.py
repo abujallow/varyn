@@ -21,6 +21,9 @@ _SENSITIVE_KEYS = {
     "token",
 }
 
+MAX_AUDIT_LOG_BYTES = 10 * 1024 * 1024
+MAX_AUDIT_LOG_LINES = 5000
+
 
 class AuditLogger:
     def __init__(self, path: Path | None = None) -> None:
@@ -52,7 +55,33 @@ class AuditLogger:
             with self.path.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(entry, ensure_ascii=True) + "\n")
             self._update_summary(entry)
+            self._rotate_if_needed()
         return entry
+
+    def _rotate_if_needed(self) -> None:
+        """Cap the append-only log so a long-running instance doesn't grow forever.
+
+        Only triggers past MAX_AUDIT_LOG_BYTES, then trims to the last
+        MAX_AUDIT_LOG_LINES entries. Aggregate counters in summary.json are
+        unaffected — only the raw recent-entries log is capped.
+        """
+        try:
+            size = self.path.stat().st_size
+        except OSError:
+            return
+        if size < MAX_AUDIT_LOG_BYTES:
+            return
+        try:
+            lines = self.path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return
+        trimmed = lines[-MAX_AUDIT_LOG_LINES:]
+        temporary = self.path.with_suffix(f"{self.path.suffix}.tmp")
+        temporary.write_text(
+            "\n".join(trimmed) + ("\n" if trimmed else ""),
+            encoding="utf-8",
+        )
+        temporary.replace(self.path)
 
     def recent(self, limit: int = 50) -> list[dict]:
         if not self.path.exists():

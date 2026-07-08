@@ -138,10 +138,7 @@ def health_details():
                 item["name"] for item in build_tool_registry().descriptions()
             ],
             "memory": True,
-            "durable_memory": {
-                "active": True,
-                "fact_count": len(long_term_memory.list_facts()),
-            },
+            "durable_memory": long_term_memory.summary(),
             "risk_engine": True,
             "market_data": True,
             "file_context": True,
@@ -162,6 +159,14 @@ def health_details():
         "cfpb": cfpb_status(),
         "safety": safety.status(),
         "audit": audit.summary(),
+        "persistence": {
+            "note": "Hosted demo state is ephemeral across redeploys except durable remembered facts.",
+            "durable_memory_backend": long_term_memory.summary().get("backend"),
+            "session_memory": "ephemeral, pruned after inactivity",
+            "uploads": "ephemeral, not retained across restarts",
+            "audit_log": "ephemeral, size/entry-capped",
+            "market_and_regulatory_caches": "ephemeral, regenerated on demand from public sources",
+        },
     }
 
 
