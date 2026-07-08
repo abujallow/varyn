@@ -1497,10 +1497,11 @@ input:focus-visible {
 }
 
 .usage-limit-note {
-  color: var(--muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.02em;
-  margin: 0.3rem 0 0;
+  color: rgba(154, 169, 162, 0.76);
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  margin: 0.25rem 0 0.6rem;
+  text-transform: uppercase;
 }
 
 .deck-actions {

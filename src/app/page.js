@@ -1698,6 +1698,9 @@ export default function Home() {
 
         <aside className="system-panel right-panel" aria-label="Activity and response">
           <div className="panel-heading">Activity Log</div>
+          {!ownerAuthenticated && (
+            <p className="usage-limit-note">Public usage is limited to 10 requests per hour.</p>
+          )}
           <div className="activity-log">
             {heartbeatState.notices.map((notice) => (
               <details className={`heartbeat-readout notice-${notice.severity}`} key={notice.id}>
@@ -1910,9 +1913,6 @@ export default function Home() {
             />
             <button type="submit">Send</button>
           </div>
-          {!ownerAuthenticated && (
-            <p className="usage-limit-note">Public usage is limited to 10 requests per hour.</p>
-          )}
           <div className="deck-actions">
             <div className="voice-mode-toggle" role="group" aria-label="Voice input mode">
               <button
