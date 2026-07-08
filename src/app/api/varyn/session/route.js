@@ -1,21 +1,22 @@
-const DEFAULT_AGENT_URL = "http://127.0.0.1:8788";
+import { agentUrl, prepareAgentRequest } from "@/lib/varyn-agent";
 
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const sessionId = body.sessionId || "local-preview";
     const action = body.action || "reset";
-    const agentUrl = process.env.VARYN_AGENT_URL || DEFAULT_AGENT_URL;
+    const access = await prepareAgentRequest(req, { ownerOnly: true, sessionId });
+    if (access.response) return access.response;
 
     const target =
       action === "clear-file"
-        ? `${agentUrl}/files/${encodeURIComponent(sessionId)}`
-        : `${agentUrl}/session/reset`;
+        ? `${agentUrl()}/files/${encodeURIComponent(access.sessionId)}`
+        : `${agentUrl()}/session/reset`;
 
     const response = await fetch(target, {
       method: action === "clear-file" ? "DELETE" : "POST",
-      headers: action === "clear-file" ? undefined : { "Content-Type": "application/json" },
-      body: action === "clear-file" ? undefined : JSON.stringify({ session_id: sessionId }),
+      headers: access.headers(action === "clear-file" ? {} : { "Content-Type": "application/json" }),
+      body: action === "clear-file" ? undefined : JSON.stringify({ session_id: access.sessionId }),
     });
 
     const data = await response.json().catch(() => ({}));

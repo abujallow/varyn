@@ -17,6 +17,7 @@ from risk_memo import (
 )
 from tools.market import extract_symbols, get_market_contexts
 from tools.risk import build_risk_analysis
+from varyn_settings import setting
 
 
 class MarketDataInput(BaseModel):
@@ -77,6 +78,7 @@ class ToolRuntime:
     long_term_memory: LongTermMemoryStore | None = None
     safety: SafetyRails | None = None
     audit: AuditLogger | None = None
+    access_role: str = "demo"
     results: dict[str, Any] = field(default_factory=dict)
 
 
@@ -115,6 +117,7 @@ class RegisteredTool:
     confirmation_action: str | None = None
     argument_preparer: ArgumentPreparer | None = None
     confirmation_description: ConfirmationDescription | None = None
+    owner_only: bool = False
 
     def schema(self) -> dict:
         return {
@@ -134,6 +137,13 @@ class RegisteredTool:
         confirmation_granted: bool = False,
     ) -> ToolExecution:
         try:
+            configured_owner_tools = set(setting("security.owner_only_tools", []))
+            if (self.owner_only or self.name in configured_owner_tools) and runtime.access_role != "owner":
+                return ToolExecution(
+                    name=self.name,
+                    ok=False,
+                    error="Owner authentication is required for this capability.",
+                )
             validated = self.input_model.model_validate(arguments)
             clean_arguments = validated.model_dump()
             if self.argument_preparer:
@@ -367,6 +377,7 @@ def build_tool_registry() -> ToolRegistry:
             confirmation_action="export_risk_memo",
             argument_preparer=prepare_memo_arguments,
             confirmation_description=memo_confirmation_description,
+            owner_only=True,
         )
     )
     registry.register(
@@ -415,6 +426,7 @@ def build_tool_registry() -> ToolRegistry:
             ),
             input_model=ActiveFileInput,
             handler=run_active_file,
+            owner_only=True,
         )
     )
     registry.register(
@@ -427,6 +439,7 @@ def build_tool_registry() -> ToolRegistry:
             input_model=RememberFactInput,
             handler=run_remember_fact,
             confirmation_action="remember_fact",
+            owner_only=True,
         )
     )
     registry.register(
@@ -439,6 +452,7 @@ def build_tool_registry() -> ToolRegistry:
             input_model=UpdateFactInput,
             handler=run_update_fact,
             confirmation_action="update_fact",
+            owner_only=True,
         )
     )
     registry.register(
@@ -451,6 +465,7 @@ def build_tool_registry() -> ToolRegistry:
             input_model=ForgetFactInput,
             handler=run_forget_fact,
             confirmation_action="forget_fact",
+            owner_only=True,
         )
     )
     return registry

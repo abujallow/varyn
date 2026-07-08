@@ -1166,6 +1166,57 @@ input:focus-visible {
   z-index: 10;
 }
 
+.owner-access-panel {
+  background: rgba(4, 9, 18, 0.98);
+  border: 1px solid rgba(var(--accent-soft-rgb), 0.3);
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.72), inset 0 0 30px rgba(var(--accent-rgb), 0.08);
+  left: 50%;
+  max-width: 410px;
+  padding: 1rem;
+  position: fixed;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 2rem);
+  z-index: 30;
+}
+
+.owner-access-panel h2,
+.owner-access-panel p {
+  margin: 0.45rem 0;
+}
+
+.owner-access-panel form {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+.owner-access-panel label {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.owner-access-panel input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(var(--accent-soft-rgb), 0.24);
+  border-radius: 7px;
+  color: var(--foreground);
+  min-height: 2.65rem;
+  padding: 0 0.75rem;
+}
+
+.owner-access-panel small {
+  color: #ffced5;
+}
+
+.owner-control {
+  border-color: rgba(var(--accent-soft-rgb), 0.36);
+}
+
 .confirmation-panel h2 {
   color: #fff1da;
   font-size: 1.1rem;

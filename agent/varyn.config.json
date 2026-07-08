@@ -1,4 +1,14 @@
 {
+  "security": {
+    "max_upload_bytes": 10485760,
+    "owner_only_tools": [
+      "active_file",
+      "remember_fact",
+      "update_fact",
+      "forget_fact",
+      "export_risk_memo"
+    ]
+  },
   "runtime": {
     "backend_host": "127.0.0.1",
     "backend_port": 8788,

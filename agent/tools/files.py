@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import re
-import shutil
 from pathlib import Path
 
 from fastapi import UploadFile
 
 from config import DATA_DIR
 from safety import detect_instructional_content
+from varyn_settings import setting
 
 
 UPLOAD_DIR = DATA_DIR / "uploads"
 MAX_CONTEXT_CHARS = 18000
+UPLOAD_CHUNK_BYTES = 64 * 1024
 
 TEXT_EXTENSIONS = {
     ".txt",
@@ -32,6 +33,11 @@ TEXT_EXTENSIONS = {
     ".yml",
     ".toml",
 }
+ALLOWED_EXTENSIONS = TEXT_EXTENSIONS | {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
+class UploadValidationError(ValueError):
+    pass
 
 
 def safe_session_id(session_id: str) -> str:
@@ -44,17 +50,31 @@ def safe_filename(filename: str) -> str:
 
 
 def process_upload(upload: UploadFile, session_id: str) -> dict:
+    filename = safe_filename(upload.filename or "uploaded-file")
+    extension = Path(filename).suffix.lower()
+    if extension not in ALLOWED_EXTENSIONS:
+        raise UploadValidationError(f"File type {extension or 'unknown'} is not allowed.")
+
+    max_bytes = int(setting("security.max_upload_bytes", 10 * 1024 * 1024))
     session_dir = UPLOAD_DIR / safe_session_id(session_id)
     session_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = safe_filename(upload.filename or "uploaded-file")
     path = session_dir / filename
+    temporary = path.with_suffix(f"{path.suffix}.part")
+    size = 0
+    try:
+        with temporary.open("wb") as target:
+            while chunk := upload.file.read(UPLOAD_CHUNK_BYTES):
+                size += len(chunk)
+                if size > max_bytes:
+                    raise UploadValidationError(
+                        f"File exceeds the {max_bytes // (1024 * 1024)} MB upload limit."
+                    )
+                target.write(chunk)
+        temporary.replace(path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
 
-    with path.open("wb") as target:
-        shutil.copyfileobj(upload.file, target)
-
-    size = path.stat().st_size
-    extension = path.suffix.lower()
     extraction = extract_text(path, extension)
     text = extraction["text"][:MAX_CONTEXT_CHARS]
     extracted_chars = len(text)

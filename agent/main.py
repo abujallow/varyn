@@ -5,7 +5,7 @@ import os
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -19,9 +19,10 @@ from market_data_store import source_health_status
 from memory import LongTermMemoryStore, MemoryStore
 from providers import provider_status
 from safety import get_safety_rails
+from security import enforce_request_security, request_role
 from sec_edgar import get_official_fundamentals, resolve_cik, sec_status
 from telemetry import SystemMonitor
-from tools.files import process_upload
+from tools.files import UploadValidationError, process_upload
 from tools.registry import ToolRuntime, build_tool_registry
 from varyn_settings import public_settings, setting
 
@@ -41,6 +42,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Varyn Local Agent", version="0.3.0", lifespan=lifespan)
+app.middleware("http")(enforce_request_security)
 
 runtime_public = public_settings()["runtime"]
 frontend_port = int(runtime_public["frontend_port"])
@@ -121,6 +123,11 @@ def ping():
 
 @app.get("/health")
 def health():
+    return {"ok": True, "service": "varyn-agent", "status": "online"}
+
+
+@app.get("/health/details")
+def health_details():
     return {
         "ok": True,
         "service": "varyn-agent",
@@ -299,7 +306,10 @@ def upload_file(file: UploadFile = File(...), session_id: str = Form("local-prev
     if not file.filename:
         return {"error": "No file selected."}
 
-    context = process_upload(file, session_id)
+    try:
+        context = process_upload(file, session_id)
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     memory.set_file_context(session_id, context)
     audit.log(
         "file_uploaded",
@@ -385,17 +395,17 @@ def reset_session(request: SessionRequest):
 
 
 @app.post("/chat")
-def chat(request: ChatRequest):
-    message = request.message.strip()
+def chat(payload: ChatRequest, request: Request):
+    message = payload.message.strip()
     if not message:
         return {"error": "No message provided."}
 
     events = [{"type": "system", "label": "Command received"}]
     audit.log(
         "chat_received",
-        session_id=request.session_id,
+        session_id=payload.session_id,
         reason="User submitted a conversational command.",
-        details={"source": request.source, "character_count": len(message)},
+        details={"source": payload.source, "character_count": len(message)},
     )
 
     if is_stop_command(message):
@@ -407,29 +417,30 @@ def chat(request: ChatRequest):
             "mode": "system_command",
             "analysis": None,
             "market": None,
-            "memory": memory.session_summary(request.session_id),
-            "file": memory.session_summary(request.session_id).get("active_file"),
+            "memory": memory.session_summary(payload.session_id),
+            "file": memory.session_summary(payload.session_id).get("active_file"),
             "events": [{"type": "voice", "label": "Stop command handled locally"}],
         }
 
-    recent_context = memory.recent_context(request.session_id)
-    file_context = memory.get_file_context(request.session_id)
+    recent_context = memory.recent_context(payload.session_id)
+    file_context = memory.get_file_context(payload.session_id)
 
     result = run_agent_turn(
         message=message,
         recent_context=recent_context,
         file_context=file_context,
         long_term_memory=long_term_memory,
-        source=request.source,
-        session_id=request.session_id,
+        source=payload.source,
+        session_id=payload.session_id,
+        access_role=request_role(request),
         safety=safety,
         audit=audit,
     )
     events.extend(condense_events(result.events))
 
-    memory_writer.submit(memory.add_turn, request.session_id, "user", message)
-    memory_writer.submit(memory.add_turn, request.session_id, "assistant", result.reply)
-    memory_summary = memory.session_summary(request.session_id)
+    memory_writer.submit(memory.add_turn, payload.session_id, "user", message)
+    memory_writer.submit(memory.add_turn, payload.session_id, "assistant", result.reply)
+    memory_summary = memory.session_summary(payload.session_id)
     memory_summary["durable_fact_count"] = len(long_term_memory.list_facts())
 
     return {
@@ -450,12 +461,12 @@ def chat(request: ChatRequest):
 
 
 @app.post("/chat/stream")
-def chat_stream(request: ChatRequest):
-    message = request.message.strip()
+def chat_stream(payload: ChatRequest, request: Request):
+    message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="No message provided.")
     return StreamingResponse(
-        stream_chat_events(request, message),
+        stream_chat_events(payload, message, request_role(request)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
@@ -465,7 +476,7 @@ def chat_stream(request: ChatRequest):
     )
 
 
-def stream_chat_events(request: ChatRequest, message: str):
+def stream_chat_events(request: ChatRequest, message: str, access_role: str):
     yield sse("status", {"status": "Thinking", "label": "Command received"})
     audit.log(
         "chat_received",
@@ -505,6 +516,7 @@ def stream_chat_events(request: ChatRequest, message: str):
             long_term_memory=long_term_memory,
             source=request.source,
             session_id=request.session_id,
+            access_role=access_role,
             safety=safety,
             audit=audit,
         ):
@@ -563,6 +575,7 @@ def execute_approved_confirmation(confirmation: dict) -> dict:
             long_term_memory=long_term_memory,
             safety=safety,
             audit=audit,
+            access_role="owner",
         )
         execution = build_tool_registry().run(
             action,

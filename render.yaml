@@ -10,3 +10,7 @@ services:
         value: 3.11.9
       - key: FRONTEND_URL
         value: https://varyn-ai.vercel.app
+      - key: VARYN_SECURITY_REQUIRED
+        value: "true"
+      - key: VARYN_PROXY_SECRET
+        sync: false

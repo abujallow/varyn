@@ -144,6 +144,7 @@ def run_agent_turn(
     session_id: str = "local-preview",
     safety: SafetyRails | None = None,
     audit: AuditLogger | None = None,
+    access_role: str = "demo",
 ) -> AgentResult:
     clean_message = message.strip()
     if normalize_command(clean_message) in GREETING_COMMANDS:
@@ -166,6 +167,7 @@ def run_agent_turn(
         long_term_memory=long_term_memory,
         safety=safety or get_safety_rails(),
         audit=audit or get_audit_logger(),
+        access_role=access_role,
     )
     memo_result = run_memo_preflight(clean_message, tool_registry, runtime)
     if memo_result:
@@ -263,6 +265,7 @@ def run_agent_turn_stream(
     session_id: str = "local-preview",
     safety: SafetyRails | None = None,
     audit: AuditLogger | None = None,
+    access_role: str = "demo",
 ):
     clean_message = message.strip()
     if normalize_command(clean_message) in GREETING_COMMANDS:
@@ -290,6 +293,7 @@ def run_agent_turn_stream(
         long_term_memory=long_term_memory,
         safety=safety or get_safety_rails(),
         audit=audit or get_audit_logger(),
+        access_role=access_role,
     )
     memo_result = run_memo_preflight(clean_message, tool_registry, runtime)
     if memo_result:

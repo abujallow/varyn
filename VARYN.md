@@ -96,6 +96,27 @@ Each tier must preserve the current working baseline and pass its verification b
 - Tier 6: browser voice reliability verified at the transcript/agent boundary. Push-to-talk is the
   default, open mic remains optional, typed input remains independent, transcripts are visible,
   speech interruption is local, and failed/empty captures never reach the agent.
+- Public-backend security hardening: server-to-server proxy authentication, anonymous distributed
+  rate limits, owner sessions, role enforcement at routes and tools, sanitized public health, and
+  streaming upload limits are implemented. Only `/ping` and minimal `/health` remain directly
+  public; sensitive controls and data require an owner-authenticated Vercel request.
+
+## Public Backend Protection
+
+- Vercel is the only trusted gateway to protected Render routes. Both services share a random
+  `VARYN_PROXY_SECRET` stored only in their encrypted environment settings.
+- Demo chat is rate-limited before Render/OpenRouter using the Vercel Upstash Redis integration.
+  Independent limits are keyed by Vercel's trusted forwarded client IP and the browser session;
+  rotating either identifier alone cannot bypass both controls. Owner sessions bypass demo quotas.
+- Owner access is represented by a signed, secure, HTTP-only cookie. The browser never receives the
+  proxy secret, auth secret, access-key hash, Redis token, or provider keys.
+- File access, durable memory, memo export, confirmation resolution, monitoring controls, session
+  reset, audit, and forced source refresh are owner-only. FastAPI checks the role independently,
+  and the tool registry blocks owner-only capabilities even if a model selects one.
+- `/health` returns only service availability. Detailed provider, tool, source, audit, and memory
+  status moved to authenticated `/health/details`.
+- Production protection fails closed when required secrets or Redis are unavailable. Local preview
+  remains owner-capable when production security is intentionally absent.
 
 ## Tier 6 Voice Reliability
 
