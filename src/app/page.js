@@ -168,6 +168,11 @@ export default function Home() {
   const [memoArtifacts, setMemoArtifacts] = useState([]);
   const [openMicAvailable, setOpenMicAvailable] = useState(true);
   const [openMicEnabled, setOpenMicEnabled] = useState(false);
+  const [ownerAccessConfigured, setOwnerAccessConfigured] = useState(false);
+  const [ownerAccessError, setOwnerAccessError] = useState("");
+  const [ownerAccessKey, setOwnerAccessKey] = useState("");
+  const [ownerAuthenticated, setOwnerAuthenticated] = useState(false);
+  const [ownerPromptOpen, setOwnerPromptOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [pushToTalkHeld, setPushToTalkHeld] = useState(false);
   const [pushToTalkKey, setPushToTalkKey] = useState("Space");
@@ -283,6 +288,49 @@ export default function Home() {
       return [nextEntry, ...items].slice(0, 14);
     });
   }, []);
+
+  const requestOwnerAccess = useCallback(() => {
+    setOwnerAccessError("");
+    setOwnerPromptOpen(true);
+  }, []);
+
+  const requireOwner = useCallback((action) => {
+    if (ownerAuthenticated) return true;
+    setOwnerAccessError(`${action} requires owner access.`);
+    setOwnerPromptOpen(true);
+    return false;
+  }, [ownerAuthenticated]);
+
+  const submitOwnerAccess = useCallback(async (event) => {
+    event.preventDefault();
+    setOwnerAccessError("");
+    try {
+      const response = await fetch("/api/varyn/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessKey: ownerAccessKey }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.owner) throw new Error(data.error || "Owner access was not accepted.");
+      setOwnerAuthenticated(true);
+      setOwnerAccessKey("");
+      setOwnerPromptOpen(false);
+      addLog({ type: "system", label: "Owner access enabled" });
+    } catch (error) {
+      setOwnerAccessError(error.message || "Owner access was not accepted.");
+    }
+  }, [addLog, ownerAccessKey]);
+
+  const logoutOwner = useCallback(async () => {
+    await fetch("/api/varyn/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "logout" }),
+    }).catch(() => null);
+    setOwnerAuthenticated(false);
+    setPendingConfirmation(null);
+    addLog({ type: "system", label: "Owner access disabled" });
+  }, [addLog]);
 
   const state = useMemo(() => {
     if (speaking) return "speaking";
@@ -510,6 +558,14 @@ export default function Home() {
             addLog({ type: "system", label: "HUD online; local intelligence layer offline" });
             return;
           }
+          if (data.error) {
+            setActiveAnalysis(null);
+            setPendingConfirmation(null);
+            setAgentReply(data.error);
+            setStatus(response.status === 429 ? "Demo limit reached" : "Request blocked");
+            addLog({ type: "error", label: data.error });
+            return;
+          }
           throw new Error(data.error || "Varyn local agent failed to respond.");
         }
 
@@ -607,6 +663,19 @@ export default function Home() {
   useEffect(() => {
     processCommandRef.current = processCommand;
   }, [processCommand]);
+
+  useEffect(() => {
+    fetch("/api/varyn/auth", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        setOwnerAuthenticated(Boolean(data.owner));
+        setOwnerAccessConfigured(Boolean(data.configured));
+      })
+      .catch(() => {
+        setOwnerAuthenticated(false);
+        setOwnerAccessConfigured(false);
+      });
+  }, []);
 
   const submitCapturedTranscript = useCallback(() => {
     const transcript = normalizeTranscript(capturedTranscriptRef.current || interimTranscriptRef.current);
@@ -859,12 +928,14 @@ export default function Home() {
   }, [addLog, stopVoice]);
 
   const openFilePicker = useCallback(() => {
+    if (!requireOwner("File upload")) return;
     fileInputRef.current?.click();
-  }, []);
+  }, [requireOwner]);
 
   const uploadFile = useCallback(
     async (file) => {
       if (!file) return;
+      if (!requireOwner("File upload")) return;
 
       setSelectedFile({
         name: file.name,
@@ -928,7 +999,7 @@ export default function Home() {
         }
       }
     },
-    [addLog, sessionId],
+    [addLog, requireOwner, sessionId],
   );
 
   const handleFileSelected = useCallback(
@@ -947,6 +1018,7 @@ export default function Home() {
   );
 
   const clearFileContext = useCallback(async () => {
+    if (!requireOwner("Clearing file context")) return;
     addLog({ type: "memory", label: "Requesting file-context clearance" });
     try {
       const response = await fetch("/api/varyn/session", {
@@ -968,9 +1040,10 @@ export default function Home() {
       console.error("Varyn clear file error:", error);
       addLog({ type: "error", label: "Could not clear file context" });
     }
-  }, [addLog, sessionId]);
+  }, [addLog, requireOwner, sessionId]);
 
   const resetSession = useCallback(async () => {
+    if (!requireOwner("Resetting the session")) return;
     cancelSpeech("Speech cancelled");
     addLog({ type: "system", label: "Requesting session reset" });
 
@@ -990,7 +1063,7 @@ export default function Home() {
     } catch {
       addLog({ type: "error", label: "Backend session reset unavailable" });
     }
-  }, [addLog, cancelSpeech, sessionId]);
+  }, [addLog, cancelSpeech, requireOwner, sessionId]);
 
   const resolveConfirmation = useCallback(async (decision) => {
     if (!pendingConfirmation) return;
@@ -1037,6 +1110,7 @@ export default function Home() {
   }, [addLog, pendingConfirmation, sessionId]);
 
   const toggleProactive = useCallback(async () => {
+    if (!requireOwner("Monitoring controls")) return;
     const paused = !heartbeatState.proactivePaused;
     try {
       const response = await fetch("/api/varyn/safety", {
@@ -1054,7 +1128,7 @@ export default function Home() {
       console.error("Varyn kill-switch error:", error);
       addLog({ type: "error", label: "Could not change proactive state" });
     }
-  }, [addLog, heartbeatState.proactivePaused, sessionId]);
+  }, [addLog, heartbeatState.proactivePaused, requireOwner, sessionId]);
 
   const toggleFullscreen = useCallback(async () => {
     if (typeof document === "undefined") return;
@@ -1072,6 +1146,7 @@ export default function Home() {
   }, [addLog]);
 
   const dismissHeartbeatNotice = useCallback(async (noticeId) => {
+    if (!requireOwner("Dismissing monitoring notices")) return;
     try {
       const response = await fetch("/api/varyn/heartbeat", {
         method: "POST",
@@ -1087,7 +1162,7 @@ export default function Home() {
     } catch {
       addLog({ type: "error", label: "Could not dismiss heartbeat notice" });
     }
-  }, [addLog]);
+  }, [addLog, requireOwner]);
 
   useEffect(() => {
     let active = true;
@@ -1731,6 +1806,38 @@ export default function Home() {
           </aside>
         )}
 
+        {ownerPromptOpen && (
+          <aside className="owner-access-panel" aria-live="polite" aria-label="Owner access">
+            <div className="panel-label">Protected controls</div>
+            <h2>Owner access</h2>
+            <p>Unlock uploads, memory, exports, confirmations, and monitoring controls.</p>
+            {ownerAccessConfigured ? (
+              <form onSubmit={submitOwnerAccess}>
+                <label htmlFor="owner-access-key">Access key</label>
+                <input
+                  autoComplete="current-password"
+                  id="owner-access-key"
+                  onChange={(event) => setOwnerAccessKey(event.target.value)}
+                  type="password"
+                  value={ownerAccessKey}
+                />
+                {ownerAccessError && <small>{ownerAccessError}</small>}
+                <div className="confirmation-actions">
+                  <button className="control-button" onClick={() => setOwnerPromptOpen(false)} type="button">
+                    Cancel
+                  </button>
+                  <button className="control-button primary" type="submit">Unlock</button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <p>Owner access is not configured on this deployment.</p>
+                <button className="control-button" onClick={() => setOwnerPromptOpen(false)} type="button">Close</button>
+              </>
+            )}
+          </aside>
+        )}
+
         {activeAnalysis && (
           <aside className="analysis-panel" aria-live="polite">
             <div className="analysis-header">
@@ -1867,6 +1974,15 @@ export default function Home() {
                 More
               </summary>
               <div className="secondary-actions-menu">
+                {ownerAuthenticated ? (
+                  <button className="control-button owner-control" onClick={logoutOwner} type="button">
+                    Lock owner access
+                  </button>
+                ) : (
+                  <button className="control-button owner-control" onClick={requestOwnerAccess} type="button">
+                    Owner access
+                  </button>
+                )}
                 <button className="control-button" disabled={!selectedFile} onClick={clearFileContext} type="button">
                   Clear file
                 </button>

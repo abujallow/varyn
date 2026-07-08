@@ -2,7 +2,8 @@
 // update the VARYN_AGENT_URL environment variable in Vercel project settings to point
 // to the hosted agent URL. The HUD will then be fully live without requiring a local backend.
 
-const DEFAULT_AGENT_URL = "http://127.0.0.1:8788";
+import { agentUrl, prepareAgentRequest } from "@/lib/varyn-agent";
+
 const AGENT_TIMEOUT_MS = 25000;
 const OFFLINE_RESPONSE = {
   reply: "Varyn is warming up — the intelligence layer may be starting from a cold state. Please try your command again in 15 seconds.",
@@ -23,19 +24,23 @@ export async function POST(req) {
       return Response.json({ error: "No message provided." }, { status: 400 });
     }
 
-    const agentUrl = process.env.VARYN_AGENT_URL || DEFAULT_AGENT_URL;
+    const access = await prepareAgentRequest(req, {
+      rateLimit: true,
+      sessionId: body.sessionId,
+    });
+    if (access.response) return access.response;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
     let response;
     try {
-      response = await fetch(`${agentUrl}/chat`, {
+      response = await fetch(`${agentUrl()}/chat`, {
         method: "POST",
-        headers: {
+        headers: access.headers({
           "Content-Type": "application/json",
-        },
+        }),
         body: JSON.stringify({
           message,
-          session_id: body.sessionId || "local-preview",
+          session_id: access.sessionId,
           source: body.source || "typed",
         }),
         cache: "no-store",
@@ -51,7 +56,7 @@ export async function POST(req) {
       return offlineResponse();
     }
 
-    return Response.json(data);
+    return Response.json(data, { headers: access.rateLimitHeaders });
   } catch {
     return offlineResponse();
   }

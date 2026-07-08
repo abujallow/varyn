@@ -1,25 +1,29 @@
-const DEFAULT_AGENT_URL = "http://127.0.0.1:8788";
+import { agentUrl, prepareAgentRequest } from "@/lib/varyn-agent";
 
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
-    const agentUrl = process.env.VARYN_AGENT_URL || DEFAULT_AGENT_URL;
+    const access = await prepareAgentRequest(req, {
+      ownerOnly: true,
+      sessionId: body.sessionId,
+    });
+    if (access.response) return access.response;
     let target;
     let payload;
 
     if (body.action === "resolve" && body.confirmationId) {
-      target = `${agentUrl}/confirmations/${encodeURIComponent(body.confirmationId)}`;
-      payload = { session_id: body.sessionId || "local-preview", decision: body.decision };
+      target = `${agentUrl()}/confirmations/${encodeURIComponent(body.confirmationId)}`;
+      payload = { session_id: access.sessionId, decision: body.decision };
     } else if (body.action === "proactive") {
-      target = `${agentUrl}/safety/proactive`;
-      payload = { session_id: body.sessionId || "local-preview", paused: Boolean(body.paused) };
+      target = `${agentUrl()}/safety/proactive`;
+      payload = { session_id: access.sessionId, paused: Boolean(body.paused) };
     } else {
       return Response.json({ error: "Unknown safety action." }, { status: 400 });
     }
 
     const response = await fetch(target, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: access.headers({ "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
       cache: "no-store",
     });

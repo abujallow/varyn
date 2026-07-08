@@ -1,9 +1,11 @@
-const DEFAULT_AGENT_URL = "http://127.0.0.1:8788";
+import { agentUrl, prepareAgentRequest } from "@/lib/varyn-agent";
 
-export async function GET() {
+export async function GET(req) {
   try {
-    const agentUrl = process.env.VARYN_AGENT_URL || DEFAULT_AGENT_URL;
-    const response = await fetch(`${agentUrl}/config/public`, {
+    const access = await prepareAgentRequest(req);
+    if (access.response) return access.response;
+    const response = await fetch(`${agentUrl()}/config/public`, {
+      headers: access.headers(),
       cache: "no-store",
       signal: AbortSignal.timeout(3000),
     });

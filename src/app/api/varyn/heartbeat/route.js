@@ -1,27 +1,29 @@
-const DEFAULT_AGENT_URL = "http://127.0.0.1:8788";
+import { agentUrl, prepareAgentRequest } from "@/lib/varyn-agent";
 
-export async function GET() {
-  return proxyHeartbeat("/heartbeat", { method: "GET" });
+export async function GET(req) {
+  return proxyHeartbeat(req, "/heartbeat", { method: "GET" });
 }
 
 export async function POST(req) {
   const body = await req.json().catch(() => ({}));
   if (body.action === "dismiss" && body.noticeId) {
-    return proxyHeartbeat(`/heartbeat/notices/${encodeURIComponent(body.noticeId)}/dismiss`, {
+    return proxyHeartbeat(req, `/heartbeat/notices/${encodeURIComponent(body.noticeId)}/dismiss`, {
       method: "POST",
-    });
+    }, true);
   }
   if (body.action === "run") {
-    return proxyHeartbeat("/heartbeat/run", { method: "POST" });
+    return proxyHeartbeat(req, "/heartbeat/run", { method: "POST" }, true);
   }
   return Response.json({ error: "Unknown heartbeat action." }, { status: 400 });
 }
 
-async function proxyHeartbeat(path, options) {
+async function proxyHeartbeat(req, path, options, ownerOnly = false) {
   try {
-    const agentUrl = process.env.VARYN_AGENT_URL || DEFAULT_AGENT_URL;
-    const response = await fetch(`${agentUrl}${path}`, {
+    const access = await prepareAgentRequest(req, { ownerOnly });
+    if (access.response) return access.response;
+    const response = await fetch(`${agentUrl()}${path}`, {
       ...options,
+      headers: access.headers(options.headers || {}),
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });

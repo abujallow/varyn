@@ -56,6 +56,46 @@ Next.js HUD (Vercel)
       -> local session memory
 ```
 
+## Public Deployment Security
+
+The deployed HUD is a controlled gateway to the Render agent. Vercel signs every backend request
+with the server-only `VARYN_PROXY_SECRET`; Render rejects direct access to every endpoint except
+the minimal `GET /ping` and sanitized `GET /health` checks. CORS remains defense in depth and is
+not treated as authentication.
+
+Anonymous visitors may use bounded chat and read-only market/risk capabilities. The free Upstash
+Redis integration applies independent per-IP and per-session hourly/daily limits plus a global daily reserve before a
+request can consume an OpenRouter call. If Redis is unavailable in production, anonymous chat and
+owner-login attempts fail closed rather than bypassing the limiter.
+
+Uploads, active-file access, durable-memory changes, memo exports, confirmations, session resets,
+audit access, heartbeat execution/dismissal, monitoring controls, and forced data refreshes are
+owner-only. Owner access uses a signed, `HttpOnly`, `Secure`, `SameSite=Strict` cookie. Vercel
+derives the role server-side and Render enforces it again at the route and registered-tool layers.
+
+Required deployment environment variables are:
+
+```text
+# Vercel and Render: identical random value
+VARYN_PROXY_SECRET=
+
+# Vercel only
+VARYN_AUTH_SECRET=
+VARYN_OWNER_ACCESS_HASH=  # lowercase SHA-256 of the owner's access key
+KV_REST_API_URL=          # supplied by the Vercel Upstash integration
+KV_REST_API_TOKEN=        # supplied by the Vercel Upstash integration
+```
+
+Optional Vercel tuning variables are `VARYN_CHAT_HOURLY_LIMIT`, `VARYN_CHAT_DAILY_LIMIT`,
+`VARYN_GLOBAL_DAILY_LIMIT`, `VARYN_OWNER_LOGIN_LIMIT`, and `VARYN_OWNER_SESSION_SECONDS`.
+Defaults are 10 chats/hour and 25/day per IP and browser session, 800 anonymous chats/day globally, five owner-login
+attempts per 15 minutes, and an eight-hour owner session.
+
+The upload proxy rejects clearly oversized requests before parsing. FastAPI then streams in
+64 KiB chunks, aborts and removes the partial file as soon as the configured 10 MiB ceiling is
+crossed, and accepts only the existing document/code/PDF/image allowlist. The maximum lives at
+`security.max_upload_bytes` in `agent/varyn.config.json`.
+
 OpenAI billing is not required. The agent uses OpenRouter when `OPENROUTER_API_KEY` is configured, tries `OPENROUTER_MODEL` first, and then tries `OPENROUTER_FALLBACK_MODEL`. Gemini remains optional and is not required. If no supported provider is available, Varyn reports local offline mode clearly while keeping local tools available.
 
 In production, the frontend and backend run as two separately deployed services (see [Deployment](#deployment)) rather than on localhost, but the request path is identical, the frontend never calls OpenRouter or any data provider directly, only its own backend.
