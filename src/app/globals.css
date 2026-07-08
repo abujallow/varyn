@@ -1496,6 +1496,13 @@ input:focus-visible {
   transform: translateY(-1px);
 }
 
+.usage-limit-note {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  margin: 0.3rem 0 0;
+}
+
 .deck-actions {
   align-items: center;
   display: flex;

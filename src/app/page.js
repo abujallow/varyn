@@ -1910,6 +1910,9 @@ export default function Home() {
             />
             <button type="submit">Send</button>
           </div>
+          {!ownerAuthenticated && (
+            <p className="usage-limit-note">Public usage is limited to 10 requests per hour.</p>
+          )}
           <div className="deck-actions">
             <div className="voice-mode-toggle" role="group" aria-label="Voice input mode">
               <button

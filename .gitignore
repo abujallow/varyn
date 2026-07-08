@@ -42,3 +42,6 @@ agent/data/uploads/
 agent/data/sessions/
 *.jsonl
 *.json.bak
+
+.vercel
+.env*
