@@ -1437,12 +1437,19 @@ input:focus-visible {
   padding: 0.75rem 1rem 0.9rem;
 }
 
+.command-deck-header {
+  align-items: baseline;
+  display: flex;
+  gap: 0.6rem;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+}
+
 .command-deck label {
   color: var(--muted);
   display: block;
   font-size: 0.68rem;
   font-weight: 900;
-  grid-column: 1 / -1;
   letter-spacing: 0.16em;
   margin: 0;
   text-transform: uppercase;
@@ -1499,9 +1506,8 @@ input:focus-visible {
 .usage-limit-note {
   color: rgba(154, 169, 162, 0.76);
   font-size: 0.64rem;
-  letter-spacing: 0.12em;
-  margin: 0.25rem 0 0.6rem;
-  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
 .deck-actions {
