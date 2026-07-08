@@ -34,6 +34,9 @@ const STARFIELD_STARS = Array.from({ length: 400 }, (_, index) => {
   };
 });
 
+const MAX_OPEN_MIC_AUTO_RESTARTS = 6;
+const OPEN_MIC_RESTART_BACKOFF_MS = [280, 320, 450, 700, 1100, 1800];
+
 function shouldStopSpeech(input, stopPhrases) {
   const text = input.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
   return stopPhrases.some((phrase) => text === phrase || text.startsWith(`${phrase} `));
@@ -250,6 +253,8 @@ export default function Home() {
   const submitCapturedTranscriptRef = useRef(null);
   const silenceTimerRef = useRef(null);
   const recognitionRestartTimerRef = useRef(null);
+  const openMicRestartCountRef = useRef(0);
+  const openMicVisibilityResumeRef = useRef(false);
   const lastCommandRef = useRef({ text: "", time: 0 });
   const speechRunRef = useRef(0);
   const preferredVoiceRef = useRef(null);
@@ -373,6 +378,22 @@ export default function Home() {
     const recognition = recognitionRef.current;
     if (!recognition || recognitionActiveRef.current || recognitionStartPendingRef.current) return false;
 
+    if (captureMode === "open-mic") {
+      if (typeof document !== "undefined" && document.hidden) {
+        openMicVisibilityResumeRef.current = true;
+        return false;
+      }
+      if (openMicRestartCountRef.current >= MAX_OPEN_MIC_AUTO_RESTARTS) {
+        openMicEnabledRef.current = false;
+        setOpenMicEnabled(false);
+        setSystem((current) => ({ ...current, voice: "Standby" }));
+        setStatus("Open mic paused after repeated restarts");
+        addLog({ type: "voice", label: "Open mic auto-paused: tap Open mic to resume" });
+        return false;
+      }
+      openMicRestartCountRef.current += 1;
+    }
+
     try {
       captureModeRef.current = captureMode;
       recognition.continuous = captureMode === "open-mic";
@@ -384,7 +405,7 @@ export default function Home() {
       recognitionActiveRef.current = false;
       return false;
     }
-  }, []);
+  }, [addLog]);
 
   const speak = useCallback(
     (text) => {
@@ -697,6 +718,7 @@ export default function Home() {
       return;
     }
 
+    openMicRestartCountRef.current = 0;
     setHeardTranscript(transcript);
     setVoiceError("");
     addLog({ type: "voice", label: `Transcript received: ${transcript.slice(0, 48)}` });
@@ -823,7 +845,11 @@ export default function Home() {
       if (openMicEnabledRef.current && !pauseForSpeechRef.current && !openMicTurnPendingRef.current) {
         setSystem((current) => ({ ...current, voice: "Open mic ready" }));
         window.clearTimeout(recognitionRestartTimerRef.current);
-        recognitionRestartTimerRef.current = window.setTimeout(() => restartRecognition("open-mic"), 280);
+        const backoffDelay =
+          OPEN_MIC_RESTART_BACKOFF_MS[
+            Math.min(openMicRestartCountRef.current, OPEN_MIC_RESTART_BACKOFF_MS.length - 1)
+          ];
+        recognitionRestartTimerRef.current = window.setTimeout(() => restartRecognition("open-mic"), backoffDelay);
       } else if (!pauseForSpeechRef.current) {
         setSystem((current) => ({ ...current, voice: "Standby" }));
       }
@@ -879,6 +905,8 @@ export default function Home() {
     if (!recognition) return;
 
     if (window.speechSynthesis?.speaking || speaking) cancelSpeech("Interrupted by new voice turn");
+    openMicRestartCountRef.current = 0;
+    openMicVisibilityResumeRef.current = false;
     openMicEnabledRef.current = true;
     setOpenMicEnabled(true);
     voiceModeRef.current = "open-mic";
@@ -1238,6 +1266,23 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        window.clearTimeout(recognitionRestartTimerRef.current);
+        return;
+      }
+      if (openMicVisibilityResumeRef.current && openMicEnabledRef.current) {
+        openMicVisibilityResumeRef.current = false;
+        openMicRestartCountRef.current = 0;
+        restartRecognition("open-mic");
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [restartRecognition]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis || !voiceConfigReady) return undefined;
     const synthesis = window.speechSynthesis;
     let disposed = false;
@@ -1245,6 +1290,7 @@ export default function Home() {
 
     const testCandidates = (voices) => {
       if (disposed || voiceTestCompleteRef.current || voices.length === 0) return;
+      if (voiceTestRunRef.current > 0) synthesis.cancel();
       const candidates = selectPreferredVoices(
         voices,
         voiceChoiceRef.current,

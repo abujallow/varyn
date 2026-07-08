@@ -1743,20 +1743,21 @@ input:focus-visible {
   html,
   body {
     height: auto;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .varyn-shell {
     height: auto;
-    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .live-stage {
     height: auto;
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto auto auto auto;
-    min-height: calc(100vh - 1.3rem);
-    overflow: auto;
+    min-height: calc(100dvh - 1.3rem);
+    overflow: visible;
   }
 
   .left-panel,
@@ -1766,11 +1767,58 @@ input:focus-visible {
     grid-column: 1;
   }
 
+  /* Mobile stacking order: ticker, orb, command input, response/log, sys monitor. */
   .market-ticker { grid-row: 2; }
-  .vital-core { grid-row: 3; height: auto; min-height: 520px; }
-  .left-panel { grid-row: 4; }
+  .vital-core { grid-row: 3; height: auto; min-height: 0; padding-bottom: 0.5rem; }
+  .command-deck { grid-row: 4; }
   .right-panel { grid-row: 5; }
-  .command-deck { grid-row: 6; }
+  .left-panel { grid-row: 6; }
+
+  .orbital-core {
+    --size: min(46vw, 260px);
+  }
+
+  .command-deck {
+    max-height: none;
+    padding-bottom: max(0.9rem, env(safe-area-inset-bottom));
+  }
+
+  .command-row input {
+    font-size: 16px;
+  }
+
+  /* Remove nested inner scrollboxes; let the page scroll naturally. */
+  .left-panel,
+  .right-panel {
+    display: block;
+    overflow: visible;
+  }
+
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .right-panel .response-heading { order: 1; }
+  .right-panel .response-box { order: 2; }
+  .right-panel .memo-downloads { order: 3; }
+  .right-panel .transcript-box { order: 4; }
+  .right-panel > .panel-heading:not(.response-heading) { order: 5; }
+  .right-panel .activity-log { order: 6; }
+  .right-panel .file-zone,
+  .right-panel input[type="file"] { order: 7; }
+
+  .activity-log,
+  .response-box {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .star:nth-child(n + 180) {
+    display: none;
+  }
 
   .analysis-panel {
     left: 1rem;
@@ -1821,7 +1869,20 @@ input:focus-visible {
   }
 
   .orbital-core {
-    --size: min(88vw, 360px);
+    --size: min(50vw, 220px);
+  }
+
+  .command-deck-header {
+    flex-wrap: wrap;
+    row-gap: 0.15rem;
+  }
+
+  .usage-limit-note {
+    white-space: normal;
+  }
+
+  .star:nth-child(n + 110) {
+    display: none;
   }
 
   .module-grid {
