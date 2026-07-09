@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "preview": "powershell -ExecutionPolicy Bypass -File ./preview-varyn.ps1"
   },
   "dependencies": {
@@ -26,7 +27,8 @@
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4",
+    "vitest": "^3.0.0"
   },
   "overrides": {
     "next": {
