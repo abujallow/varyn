@@ -28,7 +28,7 @@ from market_validation import (
     validate_price_sources,
     yfinance_payload_from_bars,
 )
-from tools.risk import build_risk_analysis
+from tools.risk import score_from_context
 from safety import SafetyRails, get_safety_rails
 
 
@@ -709,6 +709,21 @@ class HeartbeatService:
         )
 
 
+def heartbeat_risk_score(symbol: str, market_context: dict) -> int:
+    """Lightweight, always-numeric risk score for watchlist alert thresholds.
+
+    Uses score_from_context() directly rather than the user-facing
+    build_risk_analysis(), which now refuses a numeric score unless it has
+    fundamentals (beta/debt-to-equity/current ratio) that the heartbeat's
+    price-only snapshot intentionally never fetches (see Section 66: keep
+    expensive-to-poll data out of the proactive loop). The heartbeat only
+    ever needs a move-based number for its own threshold comparisons, not a
+    fundamentals-grounded memo score, so it isn't subject to that gate.
+    """
+    scores = score_from_context(f"Assess {symbol} market risk", market_context)
+    return round(sum(scores.values()) / len(scores))
+
+
 def collect_market_snapshot(
     symbols: list[str],
     watchlist: list[str],
@@ -750,16 +765,11 @@ def collect_market_snapshot(
                 "change_percent": round(day_move, 2),
                 "data_source": "yfinance",
             }
-            risk = build_risk_analysis(
-                f"Assess {symbol} market risk",
-                market_context,
-                [market_context],
-            )
             results[symbol] = {
                 "price": round(latest, 2),
                 "intraday_move_percent": round(day_move, 2),
                 "five_day_move_percent": round(five_day_move, 2),
-                "risk_score": risk["overall_score"],
+                "risk_score": heartbeat_risk_score(symbol, market_context),
                 "source": "yfinance",
             }
             if symbol in watchlist:
@@ -811,16 +821,11 @@ def collect_market_snapshot(
                         "change_percent": change,
                         "data_source": validated.get("data_source"),
                     }
-                    risk = build_risk_analysis(
-                        f"Assess {symbol} market risk",
-                        market_context,
-                        [market_context],
-                    )
                     results[symbol] = {
                         "price": round(float(validated["price"]), 2),
                         "intraday_move_percent": round(change, 2),
                         "five_day_move_percent": 0.0,
-                        "risk_score": risk["overall_score"],
+                        "risk_score": heartbeat_risk_score(symbol, market_context),
                         "source": "stooq",
                         "confidence": validated.get("confidence"),
                         "source_changed": True,
@@ -912,7 +917,7 @@ def evaluate_watched_symbol(
 ) -> None:
     day_move = float(values["intraday_move_percent"])
     five_day_move = float(values["five_day_move_percent"])
-    risk_score = int(values["risk_score"])
+    risk_score = int(values["risk_score"]) if values.get("risk_score") is not None else None
 
     if abs(day_move) >= float(thresholds["intraday_move_percent"]):
         direction = "up" if day_move >= 0 else "down"
@@ -951,7 +956,7 @@ def evaluate_watched_symbol(
         )
 
     previous_score = int(previous["risk_score"]) if previous and previous.get("risk_score") is not None else None
-    if risk_score >= int(thresholds["risk_score"]):
+    if risk_score is not None and risk_score >= int(thresholds["risk_score"]):
         key = f"risk_score:{symbol}"
         current_conditions.add(key)
         if previous_score is None or previous_score < int(thresholds["risk_score"]):
@@ -969,7 +974,8 @@ def evaluate_watched_symbol(
             )
 
     if (
-        previous_score is not None
+        risk_score is not None
+        and previous_score is not None
         and previous_score >= int(thresholds["risk_score"])
         and risk_score - previous_score >= int(thresholds["risk_score_increase"])
     ):

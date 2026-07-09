@@ -8,6 +8,13 @@ import {
   selectPreferredVoices,
   splitForSpeech,
 } from "./speech";
+import {
+  buildMarketTickerItems,
+  formatMarketChange,
+  formatMarketPrice,
+  formatMarketTimestamp,
+  isTickerAvailable,
+} from "./marketTicker";
 
 const initialEvents = [
   { type: "system", label: "Varyn online" },
@@ -63,24 +70,6 @@ function formatTime(date = new Date()) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function formatMarketPrice(value) {
-  const price = Number(value);
-  if (!Number.isFinite(price)) return "Unavailable";
-  return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function formatMarketChange(value) {
-  const change = Number(value);
-  if (!Number.isFinite(change)) return "--";
-  return `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
-}
-
-function formatMarketTimestamp(value) {
-  if (!value) return null;
-  const sampledAt = new Date(value);
-  if (Number.isNaN(sampledAt.getTime())) return null;
-  return sampledAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
 
 function formatFileSize(bytes) {
   if (!bytes) return "0 KB";
@@ -1542,17 +1531,10 @@ export default function Home() {
   };
 
   const riskModules = activeAnalysis?.modules || [];
-  const marketTickerItems = useMemo(() => {
-    const latestBySymbol = new Map();
-    const sourceItems = heartbeatState.marketSnapshot.symbols.length
-      ? heartbeatState.marketSnapshot.symbols
-      : heartbeatState.watchlist.map((symbol) => ({ symbol, available: false, stale: true, pinned: true }));
-    sourceItems.forEach((item) => {
-      const symbol = String(item?.symbol || "").toUpperCase();
-      if (symbol && !latestBySymbol.has(symbol)) latestBySymbol.set(symbol, item);
-    });
-    return [...latestBySymbol.values()];
-  }, [heartbeatState.marketSnapshot.symbols, heartbeatState.watchlist]);
+  const marketTickerItems = useMemo(
+    () => buildMarketTickerItems(heartbeatState.marketSnapshot.symbols, heartbeatState.watchlist),
+    [heartbeatState.marketSnapshot.symbols, heartbeatState.watchlist],
+  );
   const marketTimestamp = formatMarketTimestamp(
     heartbeatState.marketSnapshot.sampledAt || heartbeatState.marketSnapshot.indexUpdatedAt,
   );
@@ -1604,9 +1586,9 @@ export default function Home() {
                           : `${item.symbol} latest cached heartbeat value`}
                       >
                         <strong>{item.symbol}</strong>
-                        <span className="ticker-price">{item.available ? formatMarketPrice(item.price) : "Unavailable"}</span>
+                        <span className="ticker-price">{isTickerAvailable(item) ? formatMarketPrice(item.price) : "Unavailable"}</span>
                         <span className={`ticker-change is-${changeTone}`}>
-                          {item.available ? formatMarketChange(item.change_percent) : "--"}
+                          {isTickerAvailable(item) ? formatMarketChange(item.change_percent) : "--"}
                         </span>
                       </article>
                     );
