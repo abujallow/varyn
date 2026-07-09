@@ -401,5 +401,4 @@ I'm a Finance and Data Science student with hands-on experience in banking, oper
 **Abubakr Jallow**
 Finance & Data Science, Canisius College
 [LinkedIn](https://www.linkedin.com/in/abubakr1/) · [GitHub](https://github.com/abujallow/varyn)
-Finance & Data Science, Canisius College
-[LinkedIn](https://www.linkedin.com/in/abubakr1/) · [GitHub](https://github.com/abujallow/varyn)
+
