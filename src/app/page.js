@@ -1897,10 +1897,21 @@ export default function Home() {
             </div>
             <p>{activeAnalysis.summary}</p>
             <div className="analysis-meta">
-              {activeAnalysis.overall_score && <span>Overall {activeAnalysis.overall_score}</span>}
+              {activeAnalysis.score_available === true && activeAnalysis.overall_score != null && (
+                <span>Overall {activeAnalysis.overall_score}</span>
+              )}
               {activeAnalysis.source && <span>{activeAnalysis.source}</span>}
               {activeAnalysis.location && <span>{activeAnalysis.location}</span>}
+              {activeAnalysis.data_confidence && <span>Data confidence: {activeAnalysis.data_confidence}</span>}
             </div>
+            {activeAnalysis.score_available === false && (
+              <div className="score-unavailable-note">
+                <strong>Insufficient data to calculate a reliable score.</strong>
+                {activeAnalysis.data_gaps?.length > 0 && (
+                  <p>Missing: {activeAnalysis.data_gaps.join(", ")}</p>
+                )}
+              </div>
+            )}
             {activeAnalysis.data_points?.length > 0 && (
               <div className="market-data-grid">
                 {activeAnalysis.data_points.map((point) => (
@@ -1919,7 +1930,7 @@ export default function Home() {
             <div className="module-grid">
               {riskModules.map((module) => (
                 <article className="risk-module" key={module.title}>
-                  <span>{module.score}</span>
+                  <span>{module.score != null ? module.score : module.level || "Unrated"}</span>
                   <strong>{module.title}</strong>
                   <p>{module.detail}</p>
                 </article>

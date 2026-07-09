@@ -1322,6 +1322,22 @@ input:focus-visible {
   padding: 0.34rem 0.56rem;
 }
 
+.score-unavailable-note {
+  background: rgba(255, 179, 92, 0.08);
+  border: 1px solid rgba(255, 179, 92, 0.32);
+  border-radius: 7px;
+  color: var(--amber);
+  font-size: 0.78rem;
+  margin-top: 0.7rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.score-unavailable-note p {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  margin: 0.3rem 0 0;
+}
+
 .market-data-grid {
   display: grid;
   gap: 0.55rem;
