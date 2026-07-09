@@ -10,7 +10,7 @@
 
 </div>
 
-Varyn is a local-first AI risk intelligence command system with a Next.js HUD and a Python agent backend. It turns fragmented public market, fundamental, macroeconomic, and regulatory data into explainable, source-backed risk analysis, cross-validating figures across independent sources and scoring its own confidence in each one.
+Varyn is a local-first AI risk intelligence command system with a Next.js HUD and a Python agent backend. It turns fragmented public market, fundamental, macroeconomic, and regulatory data into explainable, source-backed risk analysis, cross-validating figures across independent sources and scoring its own confidence in each one. The public deployment has since been hardened with authenticated backend access, bounded demo usage, durable hosted facts, mobile reliability refinements, and an automated regression test suite.
 
 >  **Disclaimer:** Varyn produces preliminary risk analysis for informational and portfolio-demonstration purposes only. It is not financial, credit, investment, or legal advice.
 
@@ -19,6 +19,8 @@ Varyn is a local-first AI risk intelligence command system with a Next.js HUD an
 ## Table of Contents
 
 - [Architecture](#architecture)
+- [Public Deployment Security](#public-deployment-security)
+- [Hosted Persistence Model](#hosted-persistence-model)
 - [Agent Core](#agent-core)
 - [Market Data & Price Validation](#market-data--price-validation)
 - [Durable Memory](#durable-memory)
@@ -31,11 +33,13 @@ Varyn is a local-first AI risk intelligence command system with a Next.js HUD an
 - [Exportable Risk Memo](#exportable-risk-memo)
 - [Streaming and Stable HUD](#streaming-and-stable-hud)
 - [Browser Voice Reliability](#browser-voice-reliability)
+- [Mobile HUD Optimization](#mobile-hud-optimization)
 - [HUD Controls](#hud-controls)
 - [Live Demo](#live-demo)
 - [Local Preview](#local-preview)
 - [Provider Setup](#provider-setup)
 - [Deployment](#deployment)
+- [Automated Reliability Tests](#automated-reliability-tests)
 - [Roadmap](#roadmap)
 - [Limitations](#limitations)
 - [Why I Built This](#why-i-built-this)
@@ -53,7 +57,7 @@ Next.js HUD (Vercel)
       -> unified agent loop
         -> registered market, risk, and active-file tools
         -> OpenRouter primary/fallback reasoning
-      -> local session memory
+      -> local session memory and hosted durable facts
 ```
 
 ## Public Deployment Security
@@ -96,9 +100,32 @@ The upload proxy rejects clearly oversized requests before parsing. FastAPI then
 crossed, and accepts only the existing document/code/PDF/image allowlist. The maximum lives at
 `security.max_upload_bytes` in `agent/varyn.config.json`.
 
+The public HUD displays the anonymous usage boundary clearly: public chat is limited to 10
+requests per hour. Owner sessions remain separate from anonymous demo traffic and are intended
+only for controlled testing and administration.
+
+
 OpenAI billing is not required. The agent uses OpenRouter when `OPENROUTER_API_KEY` is configured, tries `OPENROUTER_MODEL` first, and then tries `OPENROUTER_FALLBACK_MODEL`. Gemini remains optional and is not required. If no supported provider is available, Varyn reports local offline mode clearly while keeping local tools available.
 
 In production, the frontend and backend run as two separately deployed services (see [Deployment](#deployment)) rather than on localhost, but the request path is identical, the frontend never calls OpenRouter or any data provider directly, only its own backend.
+
+
+## Hosted Persistence Model
+
+Varyn separates the local/private installation from the hosted public demo. Local Varyn remains
+the authoritative development and private-use environment, while the hosted deployment is designed
+as a protected public demonstration with honest persistence boundaries.
+
+On Render, the service filesystem is ephemeral. Varyn therefore treats hosted session history,
+temporary uploaded files, heartbeat state, market/SEC/FRED/CFPB caches, and local memo audit copies
+as temporary runtime state. That is intentional: uploads should not become permanent public-demo
+records, and public data caches can be regenerated.
+
+The exception is explicit long-term remembered facts. In hosted production, durable facts use
+Upstash Redis through `KV_REST_API_URL` and `KV_REST_API_TOKEN`, while local development continues
+to use the human-readable JSON file by default. `/health/details` reports this persistence model
+without exposing secrets. Session memory now prunes stale sessions, and audit logs are capped/rotated
+so long-running local or hosted instances do not grow forever.
 
 ## Agent Core
 
@@ -112,9 +139,16 @@ Varyn's market tool uses yfinance as its primary live/free price and fundamental
 
 ## Durable Memory
 
-Long-term facts are stored in the human-readable, git-ignored file `agent/data/long_term_memory.json`. This store is separate from session history and uploaded-file context. Each entry contains one concise fact with a stable id, and the agent reloads the file for every turn so careful manual edits are respected without rebuilding.
+Durable facts are separate from session history, uploaded-file context, and temporary hosted demo
+state. Registered `remember_fact`, `update_fact`, and `forget_fact` tools manage this store and are
+reserved for explicit user requests. Durable facts enter the prompt as untrusted background data,
+never as executable instructions, and uploaded files are never remembered automatically.
 
-Registered `remember_fact`, `update_fact`, and `forget_fact` tools manage the store. They are reserved for explicit user requests. Durable facts enter the prompt as untrusted background data, never as executable instructions, and uploaded files are never remembered automatically.
+Locally, long-term facts remain stored in the human-readable, git-ignored
+`agent/data/long_term_memory.json` file. In hosted production, the same interface is backed by
+Upstash Redis so explicitly remembered facts survive Render restarts and redeployments. This keeps
+the public demo honest: long-term facts are durable, while session chat history, uploads, caches,
+heartbeat state, and temporary runtime files remain intentionally ephemeral.
 
 ## Local Telemetry
 
@@ -186,7 +220,7 @@ Because Varyn monitors its watchlist proactively and pulls from external data so
 
 - **Confirmation gate**, high-impact or export actions (like generating a memo) require explicit confirmation before they run
 - **Prompt-injection defense**, instructions embedded in fetched data or uploaded files are treated as data, never as commands
-- **Persistent audit trail**, a durable JSONL log records actions and decisions for later review
+- **Bounded audit trail**, a JSONL log records actions and decisions for later review and is capped/rotated to prevent unbounded growth
 - **Kill switch**, the `Pause Monitoring` HUD control (see [HUD Controls](#hud-controls)) immediately halts heartbeat activity while ordinary chat remains available
 
 ## Exportable Risk Memo
@@ -220,6 +254,20 @@ The speech-only normalization layer expands financial shorthand such as `$10B`, 
 HUD silently selects the highest-quality already-installed English browser voice, preferring
 Microsoft Natural/neural voices when present; speech begins immediately and falls back to the
 browser default without a setup request or conversation log event.
+
+
+## Mobile HUD Optimization
+
+Varyn's public HUD was refined for mobile without changing the desktop command-center layout.
+Below desktop widths, the interface now uses a more intentional stack order, removes nested scroll
+traps, reduces the mobile height pressure of the orb while preserving Varyn's visual identity, and
+keeps the command input easier to reach.
+
+The browser voice layer also includes mobile-specific reliability hardening. Open mic restarts are
+guarded with retry caps, cooldown/backoff behavior, and tab-visibility handling so iOS Safari does
+not repeatedly restart speech recognition after every pause and trigger repeated microphone system
+tones. The starfield is reduced on narrow screens to limit animation load, and command input sizing
+is kept safe for iOS focus behavior.
 
 ## HUD Controls
 
@@ -295,12 +343,41 @@ VARYN_AGENT_URL=http://127.0.0.1:8788
 |---|---|---|
 | Backend | Render.com | Root directory `agent`; Python pinned to 3.11 via `runtime.txt`/`.python-version`; numpy pinned to 1.26.4; auto-deploys on changes inside `/agent` |
 | Frontend | Vercel | Production domain `varyn-ai.vercel.app`; auto-deploys on any push to `main` |
+| Durable facts / rate limits | Upstash Redis | Stores hosted long-term facts and anonymous demo quota counters through REST credentials |
 | Keep-alive | cron-job.org | Hits `GET /ping` every 5 minutes to prevent Render's free-tier 15-minute spin-down |
 
-Render supplies `PORT` automatically. `FRONTEND_URL` and `PYTHON_VERSION` are supplied via `render.yaml`. On Vercel, only `VARYN_AGENT_URL` (pointing at the Render backend's HTTPS URL) is required, provider API keys are never stored on the frontend.
+Render supplies `PORT` automatically. `FRONTEND_URL` and `PYTHON_VERSION` are supplied via `render.yaml`. Vercel points `VARYN_AGENT_URL` at the Render backend's HTTPS URL and stores the proxy/auth/rate-limit variables. Render stores the matching `VARYN_PROXY_SECRET` plus `KV_REST_API_URL` and `KV_REST_API_TOKEN` for hosted durable facts. Provider API keys are never stored on the frontend.
+
+## Automated Reliability Tests
+
+Varyn now includes a persistent automated reliability suite covering the safety-critical logic that
+previously required manual verification. The current suite contains 101 tests: 74 backend pytest
+tests and 27 frontend Vitest tests.
+
+Coverage includes one-time confirmation enforcement, session and uploaded-file isolation,
+prompt-injection detection, upload size/type restrictions, owner bypass and rate-limit regression
+logic, hosted persistence backend selection, audit rotation, risk memo evidence validation, source
+confidence/provenance normalization, provider failover/timeout behavior, risk-score regression
+checks, and speech normalization. The suite uses mocks and temporary directories only; it does not
+hit live OpenRouter, Upstash, Vercel, Render, or other external services.
+
+Development checks:
+
+```powershell
+cd C:\varyn
+python -m pytest agent/tests/ -q
+npm run test
+npm run build
+npm run lint
+```
+
+This testing layer is intentionally reliability infrastructure rather than a new product feature:
+it helps future development move faster without quietly weakening Varyn's security, persistence,
+risk-analysis, or voice behavior.
 
 ## Roadmap
 
+- [ ] Optional Render-side secondary rate limiting behind the proxy-secret gate for additional defense in depth
 - [ ] Bank/financial-institution-specific fundamentals mapping (deposits, loan-to-deposit ratio, Tier 1 capital, net interest margin)
 - [ ] Optional news/sentiment data layer
 - [ ] Optional extension of the compliance layer using Federal Reserve enforcement-action data
@@ -313,13 +390,16 @@ Render supplies `PORT` automatically. `FRONTEND_URL` and `PYTHON_VERSION` are su
 - Free-tier LLM reasoning can be slower or more variable than paid models
 - Bank fundamentals are not yet fully mapped (see [Roadmap](#roadmap))
 - Render's free tier caps available memory at 512MB; the keep-alive job mitigates cold starts but doesn't eliminate all latency
+- Hosted demo session state, uploads, caches, heartbeat state, and temporary runtime files are intentionally ephemeral; explicit long-term facts persist through Upstash Redis
 
 ## Why I Built This
 
-I'm a Finance and Data Science student with hands-on experience in banking, operational reporting automation, and risk management. Varyn started as a way to prove I could build a serious AI system end to end, not just prompt an API, but design a tool-calling agent, validate data across multiple official sources, add real safety rails, and ship something live. It's the technical foundation and proof-of-work behind my longer-term interest in operational risk intelligence for organizations that don't have the infrastructure of a large financial institution.
+I'm a Finance and Data Science student with hands-on experience in banking, operational reporting automation, and risk management. Varyn started as a way to prove I could build a serious AI system end to end, not just prompt an API, but design a tool-calling agent, validate data across multiple official sources, add real safety rails, and ship something live. Its latest stabilization work hardened the public backend, clarified hosted persistence, improved mobile usability, and added automated reliability tests, moving Varyn from a memorable MVP toward a more disciplined software system. It's the technical foundation and proof-of-work behind my longer-term interest in operational risk intelligence for organizations that don't have the infrastructure of a large financial institution.
 
 ## About
 
 **Abubakr Jallow**
+Finance & Data Science, Canisius College
+[LinkedIn](https://www.linkedin.com/in/abubakr1/) · [GitHub](https://github.com/abujallow/varyn)
 Finance & Data Science, Canisius College
 [LinkedIn](https://www.linkedin.com/in/abubakr1/) · [GitHub](https://github.com/abujallow/varyn)
