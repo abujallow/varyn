@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from config import AGENT_DIR
@@ -38,6 +39,11 @@ def public_settings() -> dict:
             "backend_host": runtime.get("backend_host", "127.0.0.1"),
             "backend_port": runtime.get("backend_port", 8788),
             "frontend_port": runtime.get("frontend_port", 3200),
+            # Render sets this env var automatically on every hosted dyno; it is the
+            # same signal security.py's security_required() already trusts to force
+            # security on in production. Reused here only to label the HUD's backend
+            # status honestly (hosted vs. local) -- no secret or URL is exposed.
+            "hosted": bool(os.getenv("RENDER")),
         },
         "provider": {
             "name": "OpenRouter",

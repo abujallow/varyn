@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourceHealthTitle, sourceStatusLabel } from "../systemHealth.js";
+import { backendLabel, sourceHealthTitle, sourceStatusLabel } from "../systemHealth.js";
 
 describe("sourceStatusLabel", () => {
   it("returns Awaiting for a missing source", () => {
@@ -62,5 +62,28 @@ describe("sourceHealthTitle", () => {
   it("omits absent details instead of leaving empty segments", () => {
     const title = sourceHealthTitle("FRED", { status: "active" });
     expect(title).toBe("FRED: Active");
+  });
+});
+
+describe("backendLabel", () => {
+  it("labels the hosted deployment without reporting a local port", () => {
+    expect(backendLabel({ hosted: true, backendPort: 8788 })).toBe("Hosted Agent");
+  });
+
+  it("labels a hosted deployment even when no port is reported", () => {
+    expect(backendLabel({ hosted: true, backendPort: undefined })).toBe("Hosted Agent");
+  });
+
+  it("labels local development with its port when not hosted", () => {
+    expect(backendLabel({ hosted: false, backendPort: 8788 })).toBe("Local Agent 8788");
+  });
+
+  it("prefers the hosted label over the port when both signals are present", () => {
+    expect(backendLabel({ hosted: true, backendPort: 8788 })).not.toContain("8788");
+  });
+
+  it("returns null when neither signal is available yet", () => {
+    expect(backendLabel({})).toBeNull();
+    expect(backendLabel()).toBeNull();
   });
 });

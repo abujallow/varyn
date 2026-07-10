@@ -18,3 +18,9 @@ export function sourceHealthTitle(label, source) {
   ].filter(Boolean);
   return details.join(". ");
 }
+
+export function backendLabel({ hosted, backendPort } = {}) {
+  if (hosted) return "Hosted Agent";
+  if (backendPort) return `Local Agent ${backendPort}`;
+  return null;
+}

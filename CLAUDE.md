@@ -19,17 +19,24 @@ file is the condensed, code-facing version of that history.
 ## Architecture
 
 - **Frontend**: Next.js (App Router), single HUD orchestrated from `src/app/page.js`
-  (~1,830 lines — still the owner of all state/effects/refs/API calls, see "Known
+  (~1,880 lines — still the owner of all state/effects/refs/API calls, see "Known
   Issues" below). Voice via Web Speech API, pure helpers extracted to
-  `src/app/speech.js`, `src/app/marketTicker.js`, and `src/app/systemHealth.js`.
+  `src/app/speech.js`, `src/app/marketTicker.js`, `src/app/systemHealth.js`, and
+  `src/app/confirmationResolution.js` (`createSingleFlightGuard()` — the
+  confirmation-modal double-approval guard).
   Four presentation-only components extracted to `src/components/` (Mini Update 2):
   `OrbitalField`, `MarketTicker`, `SystemPanel`, `AnalysisPanel` — all receive props
   only, own no state, and are rendered by `Home` in `page.js`.
 - **Backend**: Python FastAPI in `agent/`, entry point `agent/main.py`. Tool-calling
   agent core in `agent/agent_core.py`, tools in `agent/tools/`.
 - **Frontend deploy**: Vercel, production domain `https://varyn-ai.vercel.app`.
-  Manual `vercel deploy --prod` (not confirmed to auto-deploy from git push — verify
-  before assuming).
+  Auto-deploys on every push to `main` via Vercel's GitHub integration — confirmed by
+  cross-referencing `vercel ls`/`vercel inspect` deployment timestamps against
+  `git log`: every recent production deployment was created within ~10-30s of its
+  matching commit landing on `main`, and the project carries the
+  `varyn-git-main-*.vercel.app` alias Vercel only creates for a Git-integration-linked
+  branch. `vercel deploy --prod` remains available for a manual/out-of-band deploy but
+  is not the normal path.
 - **Backend deploy**: Render, `https://varyn.onrender.com`. Auto-deploys on changes
   under `/agent` per `render.yaml`; kept warm by a 5-minute `/ping` cron job.
 - **AI provider**: OpenRouter, primary model `openai/gpt-oss-20b:free`, with a
@@ -85,7 +92,7 @@ asked, never log or print the proxy secret / auth secret / owner access key or h
 
 ## Test Suite
 
-**220 pytest tests** (`agent/tests/`) + **72 Vitest tests** (`src/**/__tests__/`).
+**220 pytest tests** (`agent/tests/`) + **77 Vitest tests** (`src/**/__tests__/`).
 All network calls (OpenRouter, Gemini, yfinance company search, Upstash, Vercel, Render)
 are mocked — the suite must never make live external calls. New backend test files must
 pass `audit=` explicitly to every `SafetyRails(...)` and `ToolRuntime(...)` they
@@ -115,7 +122,10 @@ Per-file backend counts: `test_risk_routing.py` (28), `test_risk_memo.py` (22),
 `test_providers.py` (14 — pure helper math), `test_memory.py` (10), `test_safety.py`
 (12 — +2 for `peek_confirmation()`), `test_security.py` (13 — +1 for the
 `/confirmations/` gating change), `test_risk.py` (9), `test_heartbeat_market_snapshot.py`
-(9), `test_files.py` (4), `test_audit.py` (3). Frontend `speech.test.js` (27).
+(9), `test_files.py` (4), `test_audit.py` (3). Frontend: `speech.test.js` (27), `confirmationResolution.test.js`
+(6 — single-flight approval guard), `marketTicker.test.js` (19),
+`systemHealth.test.js` (15 — +5 for `backendLabel()`, the hosted-vs-local HUD label
+selector), `varyn-security.test.js` (10).
 
 ~~Known pre-existing test-isolation gap: `test_safety.py`'s `make_rails()` helper
 constructed `SafetyRails` without an injected `audit=`~~ — **fixed** while building the
@@ -124,7 +134,50 @@ Exportable Risk Memo restoration tests (`make_rails()` now takes an isolated
 
 ## Recent Fixes (most recent first)
 
-**Confirmation-modal double-approval UX fix** — After the Exportable Risk Memo
+**Deployment-documentation accuracy pass + hosted HUD label fix** — Bounded, three-part
+accuracy cleanup, not a feature change:
+1. **Vercel auto-deploy confirmed.** `CLAUDE.md` previously said Vercel deploy was
+   manual and unconfirmed to auto-deploy from git push, contradicting `README.md` and
+   the project documentation, which both said it auto-deploys on push to `main`.
+   Verified directly against the live Vercel project via `vercel ls`/`vercel inspect`:
+   every recent production deployment's `createdAt` timestamp landed within ~10-30
+   seconds of its matching commit's timestamp in `git log`, across 20+ deployments
+   spanning several days and all hours of the day — far too tight and consistent to
+   be manual `vercel deploy --prod` runs. The project also carries the
+   `varyn-git-main-abujallows-projects.vercel.app` alias, which Vercel's Git
+   integration creates automatically only for a linked branch. `CLAUDE.md` corrected
+   to state auto-deploy as fact, with the evidence method noted inline.
+2. **`VARYN-ROADMAP.md`'s stale "HOSTED VERIFICATION PENDING" note removed.** That
+   status predated Priority 1-3 (public backend protection, hosted persistence,
+   automated tests), the trust-refinement and market-watch-recovery work, the
+   five-part Mini Update series, and the Exportable Risk Memo restoration — all of
+   which exercised and verified the hosted Render/Vercel stack directly in
+   production. Status changed to `DONE`; the note now points at that later work
+   instead of describing verification as outstanding.
+3. **Misleading production HUD label fixed.** The live public HUD's AGENT STATUS →
+   BACKEND field read `"Local Agent 8788"` even in production, because
+   `agent/varyn_settings.py`'s `public_settings()` returned the static
+   `runtime.backend_port` from `varyn.config.json` with no signal distinguishing
+   hosted from local. **Root cause:** the frontend had no way to know it was talking
+   to the hosted Render backend rather than a local dev instance — the label was
+   derived purely from a config value that's the same in both environments. **Fix:**
+   `public_settings()` now also returns `runtime.hosted`, computed from
+   `bool(os.getenv("RENDER"))` — the same environment signal `security.py`'s
+   `security_required()` already trusts to force security on in production, reused
+   here only for display. New pure helper `backendLabel({ hosted, backendPort })` in
+   `src/app/systemHealth.js` returns `"Hosted Agent"` when `hosted` is true (port
+   omitted — it's meaningless once hosted) and `"Local Agent {port}"` otherwise;
+   wired into `page.js`'s runtime-config effect in place of the old inline
+   ternary. No backend behavior, routing, telemetry, health checks, security, or
+   deployment logic changed — `hosted` is a boolean with no secret or URL content,
+   safe to return to any authenticated caller. 5 new tests in
+   `systemHealth.test.js` cover hosted-with-port, hosted-without-port, local-with-port,
+   hosted-takes-priority-over-port, and the neither-signal-yet null case. Verified
+   locally (real backend, `hosted: false`, label read `"Local Agent 8788"` in a live
+   browser smoke test) and by simulating `RENDER=true` against the real
+   `public_settings()` function (`hosted: true`). Production verified post-deploy.
+
+**Confirmation-modal double-approval UX fix** (commit `eff8f8a`) — After the Exportable Risk Memo
 restoration above, the confirmation modal stayed mounted for the entire memo
 generation window (`/confirmations/{id}` is a single blocking backend call — for
 `export_risk_memo` that includes real data fetches, an LLM narrative call, and PDF
@@ -147,7 +200,7 @@ reached the server) restores the modal for a clean retry; a backend-returned fai
 No backend files changed; confirmation semantics (session-matching, expiry,
 one-time-use, action-aware owner authorization) are untouched.
 
-**Exportable Risk Memo (Tier 7) restoration — public/demo export access** — A live
+**Exportable Risk Memo (Tier 7) restoration — public/demo export access** (commit `260ccc2`) — A live
 tester found that requesting and approving a risk memo (e.g. "Give me a risk memo of
 M&T Bank" → confirm) failed every time with the HUD showing repeated
 `export_risk_memo failed safely` activity entries and a model-paraphrased "I don't have
@@ -380,6 +433,14 @@ already covered.
   available" for generic corporate ratios (deposits, loan-to-deposit, Tier 1 capital,
   NIM would need their own mapping). Main open data gap, understood, not urgent.
 - No news/sentiment data layer — deliberately deferred, not accidental.
+- **No component-level frontend test infrastructure** (no React Testing Library, no
+  jsdom — confirmed absent as of Mini Update 2 and unchanged since). Frontend tests
+  only cover pure logic modules (`speech.js`, `marketTicker.js`, `systemHealth.js`,
+  `confirmationResolution.js`, `varyn-security.js`). Anything requiring real DOM
+  rendering or timing (e.g. the confirmation-modal fix) is verified via a live local
+  browser smoke test instead, not an automated test — don't add RTL/jsdom to close
+  this gap without an explicit request, per the "no new dependencies" pattern this
+  project has consistently followed.
 - OCC and Federal Reserve enforcement-action data are documented options only, not built.
 - The "private differentiator" stays out of this shared codebase by design — do not
   try to infer or reconstruct it.
@@ -392,13 +453,15 @@ already covered.
   Update 1** (see Recent Fixes above); `call_openrouter`, `call_openrouter_stream`,
   and all response-parsing functions now have dedicated coverage in
   `agent/tests/test_providers_http.py`.
-- **`src/app/page.js` is still a ~1,830-line single component** (32 `useState`, 27
-  `useCallback`, 43 `useRef` — unchanged by Mini Update 2, which only moved
-  presentation JSX out, not state). Four presentation components now live in
-  `src/components/` (see Recent Fixes above), but voice controls, the activity/upload
-  panel, and owner/confirmation flows are still inline and tightly coupled. Continue
-  splitting incrementally as features are touched — not as a standalone refactor
-  project (regression risk).
+- **`src/app/page.js` is still a ~1,880-line single component** (state/effects/refs
+  count unchanged by any decomposition so far — extractions have only moved
+  presentation JSX and, most recently, the confirmation-approval single-flight guard
+  logic, never state itself). Four presentation components live in `src/components/`
+  (Mini Update 2) and `src/app/confirmationResolution.js` holds the approval guard
+  (confirmation-modal fix), but voice controls, the activity/upload panel, and the
+  rest of the confirmation/owner-access flow orchestration are still inline and
+  tightly coupled. Continue splitting incrementally as features are touched — not as
+  a standalone refactor project (regression risk).
 - ~~5 of 10 direct npm dependencies appear unused~~ — **resolved in Mini Update 3**
   (see Recent Fixes above); `framer-motion`, `@emailjs/browser`, `emailjs-com`,
   `react-countup`, and `react-type-animation` were removed after confirming zero
@@ -435,7 +498,15 @@ already covered.
 5. **Confirmation gates are a hard stop.** High-impact actions (remember/update/forget
    fact, export risk memo, session reset) require an explicit user confirmation via
    `agent/safety.py`'s `SafetyRails` — never claim an action ran before the backend
-   confirms it executed.
+   confirms it executed. **`export_risk_memo` is deliberately available to any
+   authenticated demo/public session** (confirmation-gated, not owner-gated) — this
+   was a real incident (see "Exportable Risk Memo restoration" in Recent Fixes), not
+   an oversight. Do not silently re-add `owner_only=True` to it in
+   `tools/registry.py` or re-list it in `varyn.config.json`'s
+   `security.owner_only_tools`, and do not re-add `/confirmations/` to
+   `security.py`'s `OWNER_PREFIXES`, without an explicit, separate request.
+   `remember_fact`/`update_fact`/`forget_fact`/`active_file` remain correctly
+   owner-only.
 6. **Session and file-context isolation is explicit, not implicit.** Uploaded files
    and session memory must never leak across `session_id` boundaries; `MemoryStore`
    already TTL-prunes stale sessions — don't remove that.

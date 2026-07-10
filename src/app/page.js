@@ -10,6 +10,7 @@ import {
   splitForSpeech,
 } from "./speech";
 import { buildMarketTickerItems, formatMarketTimestamp } from "./marketTicker";
+import { backendLabel } from "./systemHealth";
 import { createSingleFlightGuard } from "./confirmationResolution";
 import OrbitalField from "../components/OrbitalField";
 import MarketTicker from "../components/MarketTicker";
@@ -1206,6 +1207,7 @@ export default function Home() {
         setPushToTalkKey(configuredPushKey);
         setOpenMicAvailable(data.voice?.open_mic_enabled !== false);
         const backendPort = data.runtime?.backend_port;
+        const backendHosted = data.runtime?.hosted;
         setHeartbeatState((current) => ({
           ...current,
           watchlist: data.watchlist?.length ? data.watchlist : current.watchlist,
@@ -1214,7 +1216,7 @@ export default function Home() {
           ...current,
           provider: data.provider?.name || current.provider,
           model: data.provider?.active_model || data.provider?.primary_model || current.model,
-          backend: backendPort ? `Local Agent ${backendPort}` : current.backend,
+          backend: backendLabel({ hosted: backendHosted, backendPort }) || current.backend,
           voice: configuredVoiceMode === "open-mic" ? "Open mic standby" : "PTT ready",
         }));
         addLog({ type: "system", label: "Runtime configuration loaded" });

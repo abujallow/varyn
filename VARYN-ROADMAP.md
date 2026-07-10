@@ -35,12 +35,16 @@ files, never in code or chat.
     and company-risk context alongside SEC fundamentals verified.
   - Source-health reconciliation is DONE: SEC/FRED rows now derive status from their real cached
     subsystem refresh evidence instead of remaining `Awaiting` when request counters are empty.
-- **Public-backend security hardening** — DONE LOCALLY; HOSTED VERIFICATION PENDING
+- **Public-backend security hardening** — DONE
   - Vercel-to-Render shared-secret authentication, server-asserted demo/owner roles, Upstash-backed
     anonymous quotas, owner-login throttling, protected controls/tools, sanitized public health,
     scoped browser sessions, and streaming upload ceilings are implemented.
   - Python security regression tests, ESLint, dependency audits, and the Next.js production build
-    pass. Vercel Preview/Production Redis and Render secret verification remain before completion.
+    pass. Hosted verification is complete: the live Render/Vercel stack has since been repeatedly
+    exercised in production through Priority 1-3 (public backend protection, hosted Upstash
+    persistence, automated reliability tests), the public/demo Exportable Risk Memo restoration,
+    action-aware confirmation-flow testing, and direct production smoke tests — see `CLAUDE.md`'s
+    Recent Fixes for specifics.
 - **Tier 5** (the rails — confirmation, injection defense, config, audit, kill switch) — DONE
   - Consequential actions require exact per-action approval in the HUD; approval never carries
     forward to another action.
