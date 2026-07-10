@@ -11,17 +11,12 @@
     "preview": "powershell -ExecutionPolicy Bypass -File ./preview-varyn.ps1"
   },
   "dependencies": {
-    "@emailjs/browser": "^4.4.1",
     "@upstash/ratelimit": "^2.0.7",
     "@upstash/redis": "^1.35.6",
-    "emailjs-com": "^3.2.0",
-    "framer-motion": "^12.38.0",
     "lucide-react": "^0.577.0",
     "next": "16.2.10",
     "react": "19.2.4",
-    "react-countup": "^6.5.3",
-    "react-dom": "19.2.4",
-    "react-type-animation": "^3.2.0"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

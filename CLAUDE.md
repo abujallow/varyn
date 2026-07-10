@@ -96,6 +96,15 @@ Per-file backend counts: `test_risk_routing.py` (28), `test_risk_memo.py` (18),
 
 ## Recent Fixes (most recent first)
 
+**Mini Update 3 — remove confirmed-unused frontend dependencies** — Verified
+repository-wide (source, tests, config, scripts, docs) that `framer-motion`,
+`@emailjs/browser`, `emailjs-com`, `react-countup`, and `react-type-animation` had
+zero imports/usages anywhere, then removed all five via `npm uninstall` (updates
+`package.json` and `package-lock.json` together; 8 packages removed total including
+transitive-only deps, 0 vulnerabilities). `package.json` now lists 6 direct
+dependencies, all confirmed in use. No source files changed; no behavior, styling,
+or functionality change.
+
 **Mini Update 2 — incremental frontend decomposition** — Extracted four presentation-only
 components from `src/app/page.js` into `src/components/`: `OrbitalField.jsx` (static
 starfield background), `MarketTicker.jsx` (heartbeat market-watch row), `SystemPanel.jsx`
@@ -194,9 +203,10 @@ already covered.
   panel, and owner/confirmation flows are still inline and tightly coupled. Continue
   splitting incrementally as features are touched — not as a standalone refactor
   project (regression risk).
-- **5 of 10 direct npm dependencies appear unused**: `framer-motion`,
-  `@emailjs/browser`, `emailjs-com` (abandoned upstream), `react-countup`,
-  `react-type-animation`. Safe, low-priority cleanup.
+- ~~5 of 10 direct npm dependencies appear unused~~ — **resolved in Mini Update 3**
+  (see Recent Fixes above); `framer-motion`, `@emailjs/browser`, `emailjs-com`,
+  `react-countup`, and `react-type-animation` were removed after confirming zero
+  usage repository-wide.
 - **`main.py` route handlers lack HTTP-level (`TestClient`) tests** for most routes
   (`/chat`, `/chat/stream`, `/sec/*`, `/fred/*`, `/heartbeat`, `/audit`, etc.) — logic
   underneath is tested directly, but not through the actual FastAPI request/response
