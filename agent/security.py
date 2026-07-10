@@ -13,7 +13,6 @@ PUBLIC_PATHS = {"/ping", "/health"}
 OWNER_PREFIXES = (
     "/audit",
     "/safety",
-    "/confirmations/",
     "/upload",
     "/files/",
     "/session/",
@@ -31,6 +30,11 @@ def proxy_secret() -> str:
 
 
 def is_owner_path(request: Request) -> bool:
+    # /confirmations/{id} is intentionally NOT blanket owner-gated here: some
+    # confirmation-gated actions (export_risk_memo) are meant to be resolvable
+    # by any authenticated demo/public session. main.py's resolve_confirmation()
+    # route does its own per-confirmation, action-aware owner check instead --
+    # see confirmation_requires_owner() there.
     path = request.url.path
     if path.startswith(OWNER_PREFIXES):
         return True

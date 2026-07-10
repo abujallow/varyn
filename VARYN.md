@@ -110,9 +110,13 @@ Each tier must preserve the current working baseline and pass its verification b
   rotating either identifier alone cannot bypass both controls. Owner sessions bypass demo quotas.
 - Owner access is represented by a signed, secure, HTTP-only cookie. The browser never receives the
   proxy secret, auth secret, access-key hash, Redis token, or provider keys.
-- File access, durable memory, memo export, confirmation resolution, monitoring controls, session
-  reset, audit, and forced source refresh are owner-only. FastAPI checks the role independently,
-  and the tool registry blocks owner-only capabilities even if a model selects one.
+- File access, durable memory, monitoring controls, session reset, audit, and forced source
+  refresh are owner-only. FastAPI checks the role independently, and the tool registry
+  blocks owner-only capabilities even if a model selects one. The Exportable Risk Memo
+  is the one confirmation-gated capability available to any authenticated public/demo
+  session (not owner-only) — confirmation resolution for it, and only it, is permitted
+  for demo role; every other confirmation-gated action still requires owner role to
+  both create and resolve.
 - `/health` returns only service availability. Detailed provider, tool, source, audit, and memory
   status moved to authenticated `/health/details`.
 - Production protection fails closed when required secrets or Redis are unavailable. Local preview

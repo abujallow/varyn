@@ -3,15 +3,22 @@ import { agentUrl, prepareAgentRequest } from "@/lib/varyn-agent";
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
+    const isResolve = body.action === "resolve" && body.confirmationId;
+    // "resolve" is intentionally not owner-only here: the backend's
+    // /confirmations/{id} route makes its own per-confirmation, action-aware
+    // owner check (confirmation_requires_owner() in main.py) -- some
+    // confirmation-gated actions (export_risk_memo) are resolvable by any
+    // authenticated demo/public session, others are not. "proactive" (the
+    // kill switch) stays strictly owner-only.
     const access = await prepareAgentRequest(req, {
-      ownerOnly: true,
+      ownerOnly: !isResolve,
       sessionId: body.sessionId,
     });
     if (access.response) return access.response;
     let target;
     let payload;
 
-    if (body.action === "resolve" && body.confirmationId) {
+    if (isResolve) {
       target = `${agentUrl()}/confirmations/${encodeURIComponent(body.confirmationId)}`;
       payload = { session_id: access.sessionId, decision: body.decision };
     } else if (body.action === "proactive") {

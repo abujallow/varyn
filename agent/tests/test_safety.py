@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from audit import AuditLogger
 from safety import SafetyRails, detect_instructional_content
 
 
@@ -13,6 +14,11 @@ def make_rails(tmpdir: str) -> SafetyRails:
     return SafetyRails(
         state_path=root / "safety_state.json",
         confirmations_path=root / "confirmations.json",
+        # Isolated audit logger: SafetyRails.request_confirmation()/
+        # resolve_confirmation() call self.audit.log() unconditionally, so
+        # without this every confirmation test would otherwise append real
+        # entries to the local agent/data/audit/varyn-audit.jsonl dev file.
+        audit=AuditLogger(path=root / "audit.jsonl"),
     )
 
 
@@ -67,6 +73,20 @@ class ConfirmationEnforcementTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             self.rails.resolve_confirmation(confirmation["id"], "s1", "maybe")
+
+    def test_peek_confirmation_returns_action_without_mutating_status(self):
+        confirmation = self.rails.request_confirmation(
+            session_id="s1", action="export_risk_memo", arguments={"symbol": "MTB"}
+        )
+        peeked = self.rails.peek_confirmation(confirmation["id"])
+        self.assertEqual(peeked["action"], "export_risk_memo")
+        self.assertEqual(peeked["status"], "pending")
+        # Peeking must not resolve it -- it should still be pending afterward.
+        self.assertEqual(self.rails.peek_confirmation(confirmation["id"])["status"], "pending")
+        self.rails.resolve_confirmation(confirmation["id"], "s1", "approve")  # must not raise
+
+    def test_peek_confirmation_returns_none_for_unknown_id(self):
+        self.assertIsNone(self.rails.peek_confirmation("confirm-does-not-exist"))
 
 
 class PromptInjectionDetectionTests(unittest.TestCase):

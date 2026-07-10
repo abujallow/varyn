@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import os
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from agent_core import AgentResult
+from audit import AuditLogger
 from main import app
+from safety import SafetyRails
+from tools.registry import ToolRuntime, build_tool_registry
 
 
 PROXY_HEADERS_DEMO = {"X-Varyn-Proxy-Key": "test-proxy-secret", "X-Varyn-Role": "demo"}
@@ -225,6 +230,152 @@ class ChatStreamRouteTests(SecuredTestCase):
         self.assertIn("event: result", body)
         self.assertIn("Speech cancelled", body)
         mock_stream.assert_not_called()
+
+
+def canned_market_context(symbol, prefer_cache=True):
+    return {
+        "symbol": symbol,
+        "found": True,
+        "price": 175.20,
+        "change_percent": 0.4,
+        "data_source": "yfinance",
+        "confidence": {"level": "Medium"},
+        "official_fundamentals": {"found": True, "source": "SEC EDGAR", "latest_filing_date": "2026-05-01", "fields": {}},
+    }
+
+
+def canned_fundamentals(symbol, force=False):
+    return {"found": True, "source": "SEC EDGAR", "latest_filing_date": "2026-05-01", "fields": {}}
+
+
+def canned_macro(query=""):
+    return {"source": "FRED", "confidence": {"level": "High"}, "pulled_at": "2026-07-09T00:00:00Z", "series": []}
+
+
+def canned_regulatory(symbol, force=False):
+    return {
+        "symbol": symbol,
+        "found": True,
+        "applicable": True,
+        "confidence": {"level": "High"},
+        "current": {"count": 297, "start": "2026-01-01", "end": "2026-06-30"},
+        "previous": {"count": 339, "start": "2025-07-01", "end": "2025-12-31"},
+        "source": "CFPB Consumer Complaint Database",
+        "pulled_at": "2026-07-09T00:00:00Z",
+    }
+
+
+def canned_narrative(messages, tools=None):
+    from providers import ProviderResult
+
+    return ProviderResult(
+        reply="M&T Bank shows stable market pricing with limited available fundamentals.",
+        provider="openrouter",
+        model="test-model",
+        status="OpenRouter local agent",
+    )
+
+
+class ConfirmationResolutionRouteTests(SecuredTestCase):
+    """Full HTTP-level round trip through /confirmations/{id}: the exact
+    boundary the frontend's Vercel safety proxy calls."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._tmp = TemporaryDirectory()
+        root = Path(self._tmp.name)
+        self.rails = SafetyRails(
+            state_path=root / "safety_state.json",
+            confirmations_path=root / "confirmations.json",
+            audit=AuditLogger(path=root / "audit.jsonl"),
+        )
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+        super().tearDown()
+
+    def test_demo_can_resolve_its_own_export_confirmation_and_receives_all_artifacts(self) -> None:
+        with patch("main.safety", self.rails):
+            create_runtime = ToolRuntime(session_id="http-demo-session", access_role="demo", safety=self.rails)
+            created = build_tool_registry().run(
+                "export_risk_memo", {"query": "risk memo for M&T Bank"}, create_runtime
+            )
+            confirmation_id = created.confirmation["id"]
+
+            with patch("main.memory", MagicMock(get_file_context=MagicMock(return_value=None))), patch(
+                "main.long_term_memory", MagicMock()
+            ), patch("main.audit", MagicMock()), patch(
+                "risk_memo.fetch_market_context", side_effect=canned_market_context
+            ), patch("risk_memo.get_official_fundamentals", side_effect=canned_fundamentals), patch(
+                "risk_memo.get_macro_context", side_effect=canned_macro
+            ), patch("risk_memo.get_complaint_signal", side_effect=canned_regulatory), patch(
+                "risk_memo.complete", side_effect=canned_narrative
+            ):
+                response = self.client.post(
+                    f"/confirmations/{confirmation_id}",
+                    json={"session_id": "http-demo-session", "decision": "approve"},
+                    headers=PROXY_HEADERS_DEMO,
+                )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        formats = {artifact["format"] for artifact in body["artifacts"]}
+        self.assertEqual(formats, {"markdown", "html", "pdf"})
+        for artifact in body["artifacts"]:
+            self.assertTrue(artifact["content"])
+
+    def test_demo_without_owner_role_cannot_resolve_an_owner_only_confirmation(self) -> None:
+        with patch("main.safety", self.rails):
+            owner_runtime = ToolRuntime(session_id="http-owner-session", access_role="owner", safety=self.rails)
+            created = build_tool_registry().run("remember_fact", {"statement": "test fact"}, owner_runtime)
+            confirmation_id = created.confirmation["id"]
+
+            response = self.client.post(
+                f"/confirmations/{confirmation_id}",
+                json={"session_id": "http-owner-session", "decision": "approve"},
+                headers=PROXY_HEADERS_DEMO,
+            )
+        self.assertEqual(response.status_code, 403)
+
+    def test_owner_can_still_resolve_an_owner_only_confirmation(self) -> None:
+        with patch("main.safety", self.rails), patch("main.long_term_memory", MagicMock()), patch(
+            "main.audit", MagicMock()
+        ):
+            owner_runtime = ToolRuntime(session_id="http-owner-session-2", access_role="owner", safety=self.rails)
+            created = build_tool_registry().run("remember_fact", {"statement": "test fact"}, owner_runtime)
+            confirmation_id = created.confirmation["id"]
+
+            response = self.client.post(
+                f"/confirmations/{confirmation_id}",
+                json={"session_id": "http-owner-session-2", "decision": "approve"},
+                headers=PROXY_HEADERS_OWNER,
+            )
+        self.assertEqual(response.status_code, 200)
+
+    def test_cross_session_resolution_is_rejected(self) -> None:
+        with patch("main.safety", self.rails):
+            create_runtime = ToolRuntime(session_id="http-demo-session-A", access_role="demo", safety=self.rails)
+            created = build_tool_registry().run(
+                "export_risk_memo", {"query": "risk memo for M&T Bank"}, create_runtime
+            )
+            confirmation_id = created.confirmation["id"]
+
+            response = self.client.post(
+                f"/confirmations/{confirmation_id}",
+                json={"session_id": "http-demo-session-B", "decision": "approve"},
+                headers=PROXY_HEADERS_DEMO,
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_unknown_confirmation_id_fails_safely(self) -> None:
+        with patch("main.safety", self.rails):
+            response = self.client.post(
+                "/confirmations/confirm-does-not-exist",
+                json={"session_id": "any-session", "decision": "approve"},
+                headers=PROXY_HEADERS_DEMO,
+            )
+        self.assertEqual(response.status_code, 400)
 
 
 if __name__ == "__main__":

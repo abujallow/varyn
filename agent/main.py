@@ -202,12 +202,19 @@ def proactive_control(request: ProactiveRequest):
 
 
 @app.post("/confirmations/{confirmation_id}")
-def resolve_confirmation(confirmation_id: str, request: ConfirmationDecision):
+def resolve_confirmation(confirmation_id: str, payload: ConfirmationDecision, request: Request):
+    access_role = request_role(request)
+    pending = safety.peek_confirmation(confirmation_id)
+    if pending and confirmation_requires_owner(pending) and access_role != "owner":
+        raise HTTPException(
+            status_code=403, detail="Owner authentication is required to resolve this confirmation."
+        )
+
     try:
         confirmation = safety.resolve_confirmation(
             confirmation_id,
-            request.session_id,
-            request.decision,
+            payload.session_id,
+            payload.decision,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -222,7 +229,17 @@ def resolve_confirmation(confirmation_id: str, request: ConfirmationDecision):
             "events": [{"type": "system", "label": "Consequential action denied"}],
         }
 
-    return execute_approved_confirmation(confirmation)
+    return execute_approved_confirmation(confirmation, access_role)
+
+
+def confirmation_requires_owner(confirmation: dict) -> bool:
+    """Operation-kind actions (clear_file_context, reset_session) are only ever
+    created via already owner-gated routes, so they stay owner-only here too.
+    Tool-kind actions defer to the tool's own owner_only flag -- the single
+    source of truth also enforced at execution time in RegisteredTool.run()."""
+    if confirmation.get("action_kind") != "tool":
+        return True
+    return build_tool_registry().is_owner_only(confirmation.get("action", ""))
 
 
 @app.get("/telemetry")
@@ -568,7 +585,7 @@ def stream_chat_events(request: ChatRequest, message: str, access_role: str):
     yield sse("result", payload)
 
 
-def execute_approved_confirmation(confirmation: dict) -> dict:
+def execute_approved_confirmation(confirmation: dict, access_role: str) -> dict:
     action = confirmation["action"]
     session_id = confirmation["session_id"]
     arguments = confirmation.get("arguments") or {}
@@ -580,7 +597,7 @@ def execute_approved_confirmation(confirmation: dict) -> dict:
             long_term_memory=long_term_memory,
             safety=safety,
             audit=audit,
-            access_role="owner",
+            access_role=access_role,
         )
         execution = build_tool_registry().run(
             action,

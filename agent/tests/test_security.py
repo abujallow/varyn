@@ -107,6 +107,15 @@ class OwnerPathGatingTests(unittest.TestCase):
 
         self.assertTrue(is_owner_path(self.make_request("/audit")))
 
+    def test_confirmations_are_no_longer_blanket_owner_gated(self) -> None:
+        # /confirmations/{id} is intentionally not owner-gated at the path level
+        # since Mini Update: restore public risk-memo export -- main.py's
+        # resolve_confirmation() route does its own per-confirmation,
+        # action-aware owner check instead (confirmation_requires_owner()).
+        from security import is_owner_path
+
+        self.assertFalse(is_owner_path(self.make_request("/confirmations/confirm-abc123")))
+
 
 class CapabilitySecurityTests(unittest.TestCase):
     def test_demo_cannot_run_owner_only_tool(self) -> None:

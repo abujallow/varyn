@@ -111,6 +111,18 @@ class SafetyRails:
         )
         return dict(confirmation)
 
+    def peek_confirmation(self, confirmation_id: str) -> dict | None:
+        """Read-only lookup of a confirmation by id -- does not mutate status or
+        enforce session/expiry/decision rules. Used to authorize a resolve
+        request (which action is being approved) before resolve_confirmation()
+        runs its own session/expiry/one-time-use checks."""
+        payload = self._read_confirmations()
+        confirmation = next(
+            (item for item in payload["confirmations"] if item.get("id") == confirmation_id),
+            None,
+        )
+        return dict(confirmation) if confirmation else None
+
     def pending_for_session(self, session_id: str) -> list[dict]:
         now = datetime.now(timezone.utc)
         return [

@@ -5,8 +5,7 @@
       "active_file",
       "remember_fact",
       "update_fact",
-      "forget_fact",
-      "export_risk_memo"
+      "forget_fact"
     ]
   },
   "runtime": {

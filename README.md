@@ -72,10 +72,14 @@ Redis integration applies independent per-IP and per-session hourly/daily limits
 request can consume an OpenRouter call. If Redis is unavailable in production, anonymous chat and
 owner-login attempts fail closed rather than bypassing the limiter.
 
-Uploads, active-file access, durable-memory changes, memo exports, confirmations, session resets,
-audit access, heartbeat execution/dismissal, monitoring controls, and forced data refreshes are
-owner-only. Owner access uses a signed, `HttpOnly`, `Secure`, `SameSite=Strict` cookie. Vercel
-derives the role server-side and Render enforces it again at the route and registered-tool layers.
+Uploads, active-file access, durable-memory changes, session resets, audit access,
+heartbeat execution/dismissal, monitoring controls, and forced data refreshes are
+owner-only. The Exportable Risk Memo is available to any authenticated public/demo
+session — it stays fully confirmation-gated, session-scoped, rate-limited, and
+audit-logged, but does not require owner access; resolving a confirmation for any
+other (owner-only) action still requires owner role. Owner access uses a signed,
+`HttpOnly`, `Secure`, `SameSite=Strict` cookie. Vercel derives the role server-side
+and Render enforces it again at the route and registered-tool layers.
 
 Required deployment environment variables are:
 
@@ -351,8 +355,8 @@ Render supplies `PORT` automatically. `FRONTEND_URL` and `PYTHON_VERSION` are su
 ## Automated Reliability Tests
 
 Varyn now includes a persistent automated reliability suite covering the safety-critical logic that
-previously required manual verification. The current suite contains 227 tests: 171 backend pytest
-tests and 56 frontend Vitest tests.
+previously required manual verification. The current suite contains 286 tests: 220 backend pytest
+tests and 66 frontend Vitest tests.
 
 Coverage includes one-time confirmation enforcement, session and uploaded-file isolation,
 prompt-injection detection, upload size/type restrictions, owner bypass and rate-limit regression

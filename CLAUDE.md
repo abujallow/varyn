@@ -56,10 +56,21 @@ file is the condensed, code-facing version of that history.
   HMAC-signed owner cookie (`authenticateOwner`/`isOwnerRequest` in
   `varyn-security.js`). The owner access key is hash-compared (`VARYN_OWNER_ACCESS_HASH`,
   SHA-256) — plaintext is never stored server-side and Claude does not have it.
-- `OWNER_PREFIXES` in `security.py` gates `/audit`, `/safety`, `/confirmations/`,
-  `/upload`, `/files/`, `/session/`, `/health/details` (added Mini Update 4 — see
-  Recent Fixes below), plus `/heartbeat/run`, `/heartbeat/notices/*`, and
-  `/sec/fundamentals/*` + `/cfpb/*` only when `?refresh=true`.
+- `OWNER_PREFIXES` in `security.py` gates `/audit`, `/safety`, `/upload`, `/files/`,
+  `/session/`, `/health/details` (added Mini Update 4), plus `/heartbeat/run`,
+  `/heartbeat/notices/*`, and `/sec/fundamentals/*` + `/cfpb/*` only when
+  `?refresh=true`. **`/confirmations/{id}` is intentionally NOT in this list** (see
+  "Exportable Risk Memo restoration" in Recent Fixes) — it does its own
+  per-confirmation, action-aware owner check in `main.py`'s `resolve_confirmation()`
+  (`confirmation_requires_owner()`), since some confirmation-gated actions
+  (`export_risk_memo`) are resolvable by any authenticated demo/public session while
+  others (`remember_fact`, `update_fact`, `forget_fact`, and any operation-kind
+  action like `clear_file_context`/`reset_session`) must stay owner-only. The
+  authorization source of truth for tool-level gating is
+  `ToolRegistry.is_owner_only(name)` (`tools/registry.py`) — it checks both the
+  per-tool `owner_only` flag AND `varyn.config.json`'s `security.owner_only_tools`
+  list (both existed and had to be updated together; a tool being un-gated in only
+  one of the two is a real bug — see the restoration writeup).
 - Rate limiting (`enforceChatLimit` in `varyn-security.js`, Upstash `@upstash/ratelimit`):
   public users capped at **10 requests/hour per IP AND per session**, plus 25/day and
   800/day global backstops. Owner role bypasses this entirely
@@ -74,9 +85,17 @@ asked, never log or print the proxy secret / auth secret / owner access key or h
 
 ## Test Suite
 
-**194 pytest tests** (`agent/tests/`) + **66 Vitest tests** (`src/**/__tests__/`).
+**220 pytest tests** (`agent/tests/`) + **66 Vitest tests** (`src/**/__tests__/`).
 All network calls (OpenRouter, Gemini, yfinance company search, Upstash, Vercel, Render)
-are mocked — the suite must never make live external calls.
+are mocked — the suite must never make live external calls. New backend test files must
+pass `audit=` explicitly to every `SafetyRails(...)` and `ToolRuntime(...)` they
+construct (see `make_isolated_rails()` pattern in `test_export_risk_memo_flow.py`) --
+`SafetyRails.request_confirmation()`/`resolve_confirmation()` and `risk_memo.export_risk_memo()`
+all call `audit.log(...)` unconditionally when given one, falling back to the real
+`get_audit_logger()` singleton when not. This was the exact bug that caused the
+pre-existing `test_safety.py`/`test_heartbeat_market_snapshot.py` audit-log leaks noted
+in earlier Mini Updates (now fixed) — and was re-introduced twice while writing the
+export-flow restoration tests before being caught and fixed.
 
 Run:
 ```bash
@@ -91,25 +110,87 @@ npm run build
 
 Per-file backend counts: `test_risk_routing.py` (28), `test_risk_memo.py` (22),
 `test_providers_http.py` (60 — HTTP/retry/fallback/streaming layer, added Mini Update 1),
-`test_main_routes.py` (13 — Mini Update 4, HTTP-boundary `TestClient` coverage),
+`test_export_risk_memo_flow.py` (18 — new, Exportable Risk Memo restoration),
+`test_main_routes.py` (18 — +5 for `/confirmations/{id}` HTTP round trips),
 `test_providers.py` (14 — pure helper math), `test_memory.py` (10), `test_safety.py`
-(10), `test_security.py` (12), `test_risk.py` (9), `test_heartbeat_market_snapshot.py`
-(9 — audit-isolated as of Mini Update 5, see below), `test_files.py` (4),
-`test_audit.py` (3). Frontend `speech.test.js` (27 — +10 Mini Update 5, spoken-date
-coverage).
+(12 — +2 for `peek_confirmation()`), `test_security.py` (13 — +1 for the
+`/confirmations/` gating change), `test_risk.py` (9), `test_heartbeat_market_snapshot.py`
+(9), `test_files.py` (4), `test_audit.py` (3). Frontend `speech.test.js` (27).
 
-**Known pre-existing test-isolation gap (still open, not yet fixed):**
-`test_safety.py`'s `make_rails()` helper constructs `SafetyRails` without an injected
-`audit=`, so it falls back to the real module-level `get_audit_logger()` singleton
-(`safety.py:28`) and a full `pytest tests/ -q` run appends real entries to the local
-gitignored `agent/data/audit/varyn-audit.jsonl` dev file — the same class of issue as
-the heartbeat one Mini Update 5 fixed (a constructor/call site defaulting to the real
-singleton instead of an injected instance), just in a different file. Harmless (local
-dev data only, never committed, never hosted state), discovered while verifying Mini
-Update 5, left unfixed since it was outside that update's stated scope
-(`test_heartbeat_market_snapshot.py` specifically).
+~~Known pre-existing test-isolation gap: `test_safety.py`'s `make_rails()` helper
+constructed `SafetyRails` without an injected `audit=`~~ — **fixed** while building the
+Exportable Risk Memo restoration tests (`make_rails()` now takes an isolated
+`AuditLogger`, required for those new tests to be clean anyway).
 
 ## Recent Fixes (most recent first)
+
+**Exportable Risk Memo (Tier 7) restoration — public/demo export access** — A live
+tester found that requesting and approving a risk memo (e.g. "Give me a risk memo of
+M&T Bank" → confirm) failed every time with the HUD showing repeated
+`export_risk_memo failed safely` activity entries and a model-paraphrased "I don't have
+permission to create or export files in this session" reply.
+
+**Root cause:** `export_risk_memo` had been made owner-only in commit `202008f`
+("Add proxy-authenticated backend, rate limiting, and owner auth") as part of a
+broader Priority-1 hardening pass that (correctly) restricted durable-memory and
+file-reading tools to owner-only, but was applied too broadly to also gate the
+memo *export* itself — a capability the project documentation always described as
+a publicly demonstrable, confirmation-gated capability, not an owner-only one. The
+`owner_only` check ran **before** confirmation creation, in `RegisteredTool.run()`
+(`agent/tools/registry.py`), and was enforced through **two independent, redundant
+mechanisms** that both had to be found and fixed: the per-tool `owner_only=True` flag
+on the tool registration, and a *separately duplicated* `export_risk_memo` entry in
+`agent/varyn.config.json`'s `security.owner_only_tools` list (`RegisteredTool.run()`
+checks `self.owner_only or self.name in configured_owner_tools` — fixing only one
+left the other still blocking every attempt). The backend memo-generation pipeline
+itself (Markdown/HTML/PDF, ReportLab, artifact encoding, missing-bank-fundamentals
+labeling) was never broken — confirmed by direct reproduction before any code change.
+
+**Fix (narrowest change that restores the documented behavior without weakening any
+other control):**
+- `agent/tools/registry.py` — removed `owner_only=True` from `export_risk_memo`'s
+  registration only; `remember_fact`/`update_fact`/`forget_fact`/`active_file` keep it.
+  Added `ToolRegistry.is_owner_only(name)` — the single source of truth for "does this
+  tool require owner role," checking both the flag and the config list so the two can
+  never drift out of sync again.
+- `agent/varyn.config.json` — removed `"export_risk_memo"` from
+  `security.owner_only_tools`.
+- `agent/security.py` — removed the blanket `/confirmations/` prefix from
+  `OWNER_PREFIXES`. Resolving a confirmation is no longer blanket owner-gated at the
+  path level.
+- `agent/main.py` — `resolve_confirmation()` now does its own per-confirmation,
+  action-aware check (`confirmation_requires_owner()`) *before* calling
+  `safety.resolve_confirmation()`: operation-kind actions (`clear_file_context`,
+  `reset_session`) and any tool-kind action where `is_owner_only()` is true still
+  require owner role to resolve; `export_risk_memo` does not. `execute_approved_confirmation()`
+  no longer hardcodes `access_role="owner"` for every confirmed execution — it now
+  receives and uses the actual verified role from the resolve request (minimum
+  privilege: a demo session's approved export runs as `"demo"`, not silently as
+  `"owner"`).
+- `agent/safety.py` — added `SafetyRails.peek_confirmation(id)`, a read-only lookup
+  used to authorize *before* mutating a confirmation's status.
+- `src/app/api/varyn/safety/route.js` — the Vercel proxy's `ownerOnly` gate is now
+  conditional: `action: "resolve"` is no longer blanket owner-only (the backend makes
+  the real decision); `action: "proactive"` (the kill switch) is unchanged and stays
+  strictly owner-only.
+
+**Preserved unchanged:** the confirmation gate itself, session-id matching, expiry,
+one-time-use enforcement, the proxy-secret requirement on every protected route, chat
+rate limits, audit logging, memo generation/evidence/scoring/missing-data-labeling
+logic, and every other owner-only capability.
+
+Verified end-to-end against the real local backend (real yfinance/SEC EDGAR/FRED/CFPB
+data, real OpenRouter model call) with no proxy secret configured (local dev default,
+non-owner role does not block this path) — "Give me a risk memo of M&T Bank" produced
+a live confirmation with no owner-authentication error, approval executed the export
+exactly once, and the HUD rendered working MD/HTML/PDF download buttons with valid,
+non-fabricated content (missing MTB fundamentals correctly labeled "Not available").
+28 new/updated backend tests across `test_export_risk_memo_flow.py` (new),
+`test_main_routes.py`, `test_safety.py`, and `test_security.py` cover: demo
+confirmation creation, no premature execution, exactly-once execution, cross-session/
+expired/reused/unknown confirmation rejection, owner-only actions staying blocked for
+demo, all three artifact formats with valid fields, and audit-log content never
+including memo text or secrets.
 
 **Mini Update 5 — final polish: spoken dates, favicon verification, heartbeat test
 isolation** — Three parts:

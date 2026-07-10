@@ -209,6 +209,20 @@ class ToolRegistry:
     def schemas(self) -> list[dict]:
         return [tool.schema() for tool in self._tools.values()]
 
+    def is_owner_only(self, name: str) -> bool:
+        """Whether resolving/executing this registered tool requires owner role.
+        Mirrors the exact check RegisteredTool.run() enforces (both the
+        per-tool owner_only flag and the configured security.owner_only_tools
+        list), so authorization decisions made before execution -- e.g. in
+        main.py's confirmation_requires_owner() -- can never drift out of sync
+        with what actually gets enforced at execution time. Unknown tool names
+        fail safe (treated as owner-only)."""
+        tool = self._tools.get(name)
+        if tool is None:
+            return True
+        configured_owner_tools = set(setting("security.owner_only_tools", []))
+        return bool(tool.owner_only or name in configured_owner_tools)
+
     def descriptions(self) -> list[dict]:
         return [
             {
@@ -377,7 +391,6 @@ def build_tool_registry() -> ToolRegistry:
             confirmation_action="export_risk_memo",
             argument_preparer=prepare_memo_arguments,
             confirmation_description=memo_confirmation_description,
-            owner_only=True,
         )
     )
     registry.register(
