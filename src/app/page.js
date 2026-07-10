@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Maximize2, Minimize2, MoreHorizontal } from "lucide-react";
 import {
   DEFAULT_PREFERRED_VOICES,
@@ -9,6 +10,7 @@ import {
   splitForSpeech,
 } from "./speech";
 import { buildMarketTickerItems, formatMarketTimestamp } from "./marketTicker";
+import { createSingleFlightGuard } from "./confirmationResolution";
 import OrbitalField from "../components/OrbitalField";
 import MarketTicker from "../components/MarketTicker";
 import SystemPanel from "../components/SystemPanel";
@@ -128,6 +130,7 @@ export default function Home() {
   const [pushToTalkHeld, setPushToTalkHeld] = useState(false);
   const [pushToTalkKey, setPushToTalkKey] = useState("Space");
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  const [resolvingDecision, setResolvingDecision] = useState(null);
   const [sessionId, setSessionId] = useState(() => createSessionId());
   const [selectedFile, setSelectedFile] = useState(null);
   const [speaking, setSpeaking] = useState(false);
@@ -182,6 +185,10 @@ export default function Home() {
   const stageRef = useRef(null);
   const responseBoxRef = useRef(null);
   const recognitionRef = useRef(null);
+  const confirmationGuardRef = useRef(null);
+  if (confirmationGuardRef.current === null) {
+    confirmationGuardRef.current = createSingleFlightGuard();
+  }
   const listeningRef = useRef(false);
   const recognitionActiveRef = useRef(false);
   const recognitionStartPendingRef = useRef(false);
@@ -1043,46 +1050,79 @@ export default function Home() {
 
   const resolveConfirmation = useCallback(async (decision) => {
     if (!pendingConfirmation) return;
-    const action = pendingConfirmation.action;
-    setProcessing(true);
-    try {
-      const response = await fetch("/api/varyn/safety", {
+    const confirmation = pendingConfirmation;
+    const action = confirmation.action;
+
+    await confirmationGuardRef.current(async () => {
+      // Force this to actually commit to the DOM (disabled buttons + the
+      // Approving/Denying label) before anything else runs, rather than
+      // letting React batch it away with the dismiss below -- see the
+      // approved plan: this is deliberate defense-in-depth/accessibility,
+      // not just a same-tick optimization.
+      flushSync(() => {
+        setResolvingDecision(decision);
+        setStatus(decision === "approve" ? "Approving" : "Denying");
+      });
+
+      const requestPromise = fetch("/api/varyn/safety", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "resolve",
-          confirmationId: pendingConfirmation.id,
+          confirmationId: confirmation.id,
           decision,
           sessionId,
         }),
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Confirmation could not be resolved.");
+
+      // Dismiss optimistically now that the request has been dispatched --
+      // the backend call for export_risk_memo blocks on the full memo
+      // generation, so waiting for it here would recreate the exact bug
+      // being fixed (modal lingering for the whole generation window).
       setPendingConfirmation(null);
-      setAgentReply(data.reply || (decision === "approve" ? "Approved action completed." : "Action denied."));
-      if (action === "export_risk_memo") {
-        setMemoArtifacts(decision === "approve" && Array.isArray(data.artifacts) ? data.artifacts : []);
+      setProcessing(true);
+
+      try {
+        const response = await requestPromise;
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Confirmation could not be resolved.");
+        setAgentReply(data.reply || (decision === "approve" ? "Approved action completed." : "Action denied."));
+        if (action === "export_risk_memo") {
+          setMemoArtifacts(decision === "approve" && Array.isArray(data.artifacts) ? data.artifacts : []);
+        }
+        setStatus(data.status || "Online");
+        (data.events || []).forEach((event) => addLog({ type: event.type, label: event.label }));
+        if (decision === "approve" && action === "clear_file_context") {
+          setSelectedFile(null);
+          setSystem((current) => ({ ...current, memory: "Active" }));
+        }
+        if (decision === "approve" && action === "reset_session") {
+          setActiveAnalysis(null);
+          setCommand("");
+          setMemoArtifacts([]);
+          setSelectedFile(null);
+          setSessionId(createSessionId());
+          setSystem((current) => ({ ...current, agent: "Standby", memory: "Active", risk: "Active", market: "Active" }));
+        }
+      } catch (error) {
+        if (error instanceof TypeError) {
+          // fetch() itself rejected -- the request never reached the server,
+          // so the confirmation is still genuinely pending. Safe to restore.
+          setPendingConfirmation(confirmation);
+          setStatus("Confirmation not sent");
+          addLog({ type: "error", label: "Could not reach Varyn to resolve the confirmation. Try again." });
+        } else {
+          // The backend received and responded to the request (expired,
+          // already resolved, wrong session, etc.) -- it is no longer safe
+          // to re-offer this exact confirmation.
+          console.error("Varyn confirmation error:", error);
+          addLog({ type: "error", label: error.message || "Confirmation failed" });
+        }
+      } finally {
+        setProcessing(false);
+        setResolvingDecision(null);
       }
-      setStatus(data.status || "Online");
-      (data.events || []).forEach((event) => addLog({ type: event.type, label: event.label }));
-      if (decision === "approve" && action === "clear_file_context") {
-        setSelectedFile(null);
-        setSystem((current) => ({ ...current, memory: "Active" }));
-      }
-      if (decision === "approve" && action === "reset_session") {
-        setActiveAnalysis(null);
-        setCommand("");
-        setMemoArtifacts([]);
-        setSelectedFile(null);
-        setSessionId(createSessionId());
-        setSystem((current) => ({ ...current, agent: "Standby", memory: "Active", risk: "Active", market: "Active" }));
-      }
-    } catch (error) {
-      console.error("Varyn confirmation error:", error);
-      addLog({ type: "error", label: error.message || "Confirmation failed" });
-    } finally {
-      setProcessing(false);
-    }
+    });
   }, [addLog, pendingConfirmation, sessionId]);
 
   const toggleProactive = useCallback(async () => {
@@ -1671,11 +1711,21 @@ export default function Home() {
             <p>{pendingConfirmation.what_it_will_do}</p>
             <small>Approval applies only to this exact action.</small>
             <div className="confirmation-actions">
-              <button className="control-button danger" onClick={() => resolveConfirmation("deny")} type="button">
-                Deny
+              <button
+                className="control-button danger"
+                disabled={Boolean(resolvingDecision)}
+                onClick={() => resolveConfirmation("deny")}
+                type="button"
+              >
+                {resolvingDecision === "deny" ? "Denying…" : "Deny"}
               </button>
-              <button className="control-button primary" onClick={() => resolveConfirmation("approve")} type="button">
-                Approve once
+              <button
+                className="control-button primary"
+                disabled={Boolean(resolvingDecision)}
+                onClick={() => resolveConfirmation("approve")}
+                type="button"
+              >
+                {resolvingDecision === "approve" ? "Approving…" : "Approve once"}
               </button>
             </div>
           </aside>

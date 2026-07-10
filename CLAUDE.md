@@ -85,7 +85,7 @@ asked, never log or print the proxy secret / auth secret / owner access key or h
 
 ## Test Suite
 
-**220 pytest tests** (`agent/tests/`) + **66 Vitest tests** (`src/**/__tests__/`).
+**220 pytest tests** (`agent/tests/`) + **72 Vitest tests** (`src/**/__tests__/`).
 All network calls (OpenRouter, Gemini, yfinance company search, Upstash, Vercel, Render)
 are mocked — the suite must never make live external calls. New backend test files must
 pass `audit=` explicitly to every `SafetyRails(...)` and `ToolRuntime(...)` they
@@ -123,6 +123,29 @@ Exportable Risk Memo restoration tests (`make_rails()` now takes an isolated
 `AuditLogger`, required for those new tests to be clean anyway).
 
 ## Recent Fixes (most recent first)
+
+**Confirmation-modal double-approval UX fix** — After the Exportable Risk Memo
+restoration above, the confirmation modal stayed mounted for the entire memo
+generation window (`/confirmations/{id}` is a single blocking backend call — for
+`export_risk_memo` that includes real data fetches, an LLM narrative call, and PDF
+rendering, 10–30s), with no guard against a second click. A second "Approve once"
+click sent a second resolve request for the same confirmation, which the backend
+correctly (and unavoidably, given one-time-use semantics) rejected with `"This
+confirmation has already been resolved."` **Fix, frontend-only:** new
+`src/app/confirmationResolution.js` exports `createSingleFlightGuard()` — a
+synchronous-at-call-time guard (not React state, so it can't be bypassed by two
+clicks landing in the same render batch) wrapping `resolveConfirmation()` in
+`page.js`. On click: `flushSync()` forces an immediate, guaranteed DOM commit of a
+new `resolvingDecision` state (both buttons disabled, the clicked one shows
+"Approving…"/"Denying…") *before* the fetch is dispatched; the confirmation modal is
+then dismissed optimistically, in the same synchronous block, right after the fetch
+is dispatched — not after it resolves — so it never lingers during generation.
+Response handling (reply, artifacts, activity log) is unchanged and continues in the
+background. A network-level failure (`fetch` itself rejects — the request never
+reached the server) restores the modal for a clean retry; a backend-returned failure
+(expired/reused/wrong-session) does not restore it and surfaces the error normally.
+No backend files changed; confirmation semantics (session-matching, expiry,
+one-time-use, action-aware owner authorization) are untouched.
 
 **Exportable Risk Memo (Tier 7) restoration — public/demo export access** — A live
 tester found that requesting and approving a risk memo (e.g. "Give me a risk memo of
