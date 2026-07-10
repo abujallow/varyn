@@ -17,6 +17,7 @@ OWNER_PREFIXES = (
     "/upload",
     "/files/",
     "/session/",
+    "/health/details",
 )
 
 

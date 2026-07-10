@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import UploadFile
 from fastapi.testclient import TestClient
@@ -50,6 +50,62 @@ class RequestSecurityTests(unittest.TestCase):
             headers={"X-Varyn-Proxy-Key": "test-proxy-secret", "X-Varyn-Role": "owner"},
         )
         self.assertEqual(response.status_code, 200)
+
+    def test_health_details_rejects_missing_proxy_key(self) -> None:
+        response = self.client.get("/health/details")
+        self.assertEqual(response.status_code, 401)
+
+    def test_health_details_rejects_demo_role(self) -> None:
+        response = self.client.get(
+            "/health/details",
+            headers={"X-Varyn-Proxy-Key": "test-proxy-secret", "X-Varyn-Role": "demo"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_health_details_allows_owner_role(self) -> None:
+        mocks = (
+            patch("main.sec_status", return_value={}),
+            patch("main.fred_status", return_value={}),
+            patch("main.cfpb_status", return_value={}),
+            patch("main.build_tool_registry", return_value=MagicMock(descriptions=lambda: [])),
+            patch("main.long_term_memory", MagicMock(summary=lambda: {"backend": "local"})),
+            patch("main.safety", MagicMock(status=lambda: {})),
+            patch("main.audit", MagicMock(summary=lambda: {})),
+        )
+        with mocks[0], mocks[1], mocks[2], mocks[3], mocks[4], mocks[5], mocks[6]:
+            response = self.client.get(
+                "/health/details",
+                headers={"X-Varyn-Proxy-Key": "test-proxy-secret", "X-Varyn-Role": "owner"},
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json().get("ok"))
+
+
+class OwnerPathGatingTests(unittest.TestCase):
+    """Direct unit coverage of is_owner_path(), independent of the TestClient
+    route tests above -- verifies the owner-only prefix list itself, not the
+    full middleware pipeline."""
+
+    @staticmethod
+    def make_request(path: str, query_string: bytes = b""):
+        from fastapi import Request
+
+        return Request(scope={"type": "http", "path": path, "query_string": query_string, "headers": []})
+
+    def test_health_details_is_owner_gated(self) -> None:
+        from security import is_owner_path
+
+        self.assertTrue(is_owner_path(self.make_request("/health/details")))
+
+    def test_health_remains_public_not_owner_gated(self) -> None:
+        from security import is_owner_path
+
+        self.assertFalse(is_owner_path(self.make_request("/health")))
+
+    def test_audit_remains_owner_gated(self) -> None:
+        from security import is_owner_path
+
+        self.assertTrue(is_owner_path(self.make_request("/audit")))
 
 
 class CapabilitySecurityTests(unittest.TestCase):

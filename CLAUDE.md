@@ -57,8 +57,9 @@ file is the condensed, code-facing version of that history.
   `varyn-security.js`). The owner access key is hash-compared (`VARYN_OWNER_ACCESS_HASH`,
   SHA-256) — plaintext is never stored server-side and Claude does not have it.
 - `OWNER_PREFIXES` in `security.py` gates `/audit`, `/safety`, `/confirmations/`,
-  `/upload`, `/files/`, `/session/`, plus `/heartbeat/run`, `/heartbeat/notices/*`,
-  and `/sec/fundamentals/*` + `/cfpb/*` only when `?refresh=true`.
+  `/upload`, `/files/`, `/session/`, `/health/details` (added Mini Update 4 — see
+  Recent Fixes below), plus `/heartbeat/run`, `/heartbeat/notices/*`, and
+  `/sec/fundamentals/*` + `/cfpb/*` only when `?refresh=true`.
 - Rate limiting (`enforceChatLimit` in `varyn-security.js`, Upstash `@upstash/ratelimit`):
   public users capped at **10 requests/hour per IP AND per session**, plus 25/day and
   800/day global backstops. Owner role bypasses this entirely
@@ -73,7 +74,7 @@ asked, never log or print the proxy secret / auth secret / owner access key or h
 
 ## Test Suite
 
-**171 pytest tests** (`agent/tests/`) + **56 Vitest tests** (`src/**/__tests__/`).
+**194 pytest tests** (`agent/tests/`) + **56 Vitest tests** (`src/**/__tests__/`).
 All network calls (OpenRouter, Gemini, yfinance company search, Upstash, Vercel, Render)
 are mocked — the suite must never make live external calls.
 
@@ -88,13 +89,58 @@ npm run lint
 npm run build
 ```
 
-Per-file backend counts: `test_risk_routing.py` (28), `test_risk_memo.py` (18),
-`test_providers_http.py` (60 — HTTP/retry/fallback/streaming layer, added Mini Update 1),
-`test_providers.py` (14 — pure helper math), `test_memory.py` (10), `test_safety.py` (10),
-`test_risk.py` (9), `test_heartbeat_market_snapshot.py` (9), `test_security.py` (6),
-`test_files.py` (4), `test_audit.py` (3).
+Per-file backend counts: `test_risk_routing.py` (28), `test_risk_memo.py` (22 — +4
+Mini Update 4), `test_providers_http.py` (60 — HTTP/retry/fallback/streaming layer,
+added Mini Update 1), `test_main_routes.py` (13 — new Mini Update 4, HTTP-boundary
+`TestClient` coverage), `test_providers.py` (14 — pure helper math), `test_memory.py`
+(10), `test_safety.py` (10), `test_security.py` (12 — +6 Mini Update 4), `test_risk.py`
+(9), `test_heartbeat_market_snapshot.py` (9), `test_files.py` (4), `test_audit.py` (3).
+
+**Known pre-existing test-isolation gap (not introduced by Mini Update 4, not yet
+fixed):** `test_heartbeat_market_snapshot.py` exercises heartbeat notice-creation
+logic that calls the real module-level `get_audit_logger()` singleton
+(`heartbeat.py:1070`) without patching it to an isolated path, so a full `pytest
+tests/ -q` run appends real entries to the local gitignored
+`agent/data/audit/varyn-audit.jsonl` dev file. Harmless (local dev data only, never
+committed, never hosted state), but worth isolating in a future pass.
 
 ## Recent Fixes (most recent first)
+
+**Mini Update 4 — HTTP route-boundary tests, exception logging, and a real
+owner-gating fix** — Three parts:
+
+1. **`/health/details` owner-gating correction (production fix).** `CLAUDE.md`
+   already documented this route as owner-gated, but `security.py`'s
+   `OWNER_PREFIXES` never actually included it — any authenticated demo-role caller
+   could read it (payload has no secrets, but is more detailed than the sanitized
+   `/health`). Fixed by adding `"/health/details"` to `OWNER_PREFIXES` — a one-line,
+   narrowest-possible change; response payload and all other routes unchanged.
+   Covered by 3 new `TestClient` tests in `test_security.py` (401 no key / 403 demo /
+   200 owner) plus 3 new direct unit tests of `is_owner_path()` itself
+   (`OwnerPathGatingTests`), independent of the HTTP layer.
+2. **HTTP-level route tests** — new `agent/tests/test_main_routes.py` (13 tests)
+   covering `/ping`, `/sec/fundamentals/{symbol}` (including the conditional
+   `?refresh=true` owner-gating branch), `/audit` response schema, `/heartbeat`
+   contract, and the full `/chat` + `/chat/stream` request/response boundary
+   (empty-message validation, stop-command short-circuit, successful-turn schema,
+   SSE headers and event framing) — all through the real FastAPI `TestClient`
+   against `main.app`, with `main.run_agent_turn`/`run_agent_turn_stream`,
+   `main.memory`, `main.long_term_memory`, and `main.audit` mocked so no real
+   `agent/data/` files are touched.
+3. **Safe logging for the two previously-swallowed exceptions in `risk_memo.py`** —
+   `generate_narrative()` (line ~415, LLM narrative call) and
+   `build_download_artifacts()` (line ~801, per-format base64 encoding) now log
+   `risk_memo_narrative_failed` / `risk_memo_artifact_encoding_failed` via the
+   existing `get_audit_logger()` before falling back exactly as before. Logged
+   fields are limited to company name / format name plus `error_type` — never raw
+   exception text, provider content, or memo content. 4 new tests in
+   `test_risk_memo.py` verify both the fallback behavior is unchanged and the log
+   contents contain no leaked content.
+
+No provider behavior, scoring, evidence standards, session isolation, confirmation
+gates, rate limits, or frontend behavior changed. See the Test Suite section above
+for a pre-existing (not introduced here) test-isolation note discovered while
+verifying this update.
 
 **Mini Update 3 — remove confirmed-unused frontend dependencies** — Verified
 repository-wide (source, tests, config, scripts, docs) that `framer-motion`,
@@ -207,13 +253,15 @@ already covered.
   (see Recent Fixes above); `framer-motion`, `@emailjs/browser`, `emailjs-com`,
   `react-countup`, and `react-type-animation` were removed after confirming zero
   usage repository-wide.
-- **`main.py` route handlers lack HTTP-level (`TestClient`) tests** for most routes
-  (`/chat`, `/chat/stream`, `/sec/*`, `/fred/*`, `/heartbeat`, `/audit`, etc.) — logic
-  underneath is tested directly, but not through the actual FastAPI request/response
-  boundary.
-- A couple of bare `except Exception:` blocks discard the error object
-  (`risk_memo.py:415`, `:801`) — not currently causing bugs, but worth logging
-  rather than swallowing.
+- ~~`main.py` route handlers lack HTTP-level (`TestClient`) tests~~ — **partially
+  resolved in Mini Update 4** (see Recent Fixes above); `/ping`, `/sec/fundamentals`,
+  `/audit`, `/heartbeat`, `/chat`, `/chat/stream`, and `/health/details` now have
+  bounded `TestClient` coverage in `agent/tests/test_main_routes.py`. `/fred/*` and
+  `/cfpb/{symbol}` were deliberately skipped (same conditional owner-gating shape as
+  `/sec/fundamentals/`, already proven) — still open if broader coverage is wanted.
+- ~~A couple of bare `except Exception:` blocks discard the error object
+  (`risk_memo.py:415`, `:801`)~~ — **resolved in Mini Update 4** (see Recent Fixes
+  above); both now log via `get_audit_logger()` with no content/secrets exposed.
 - **Overall guidance from the review: do not add new features or data sources right
   now.** The project is appropriately developed for its stage. If asked to keep
   improving, prioritize test/reliability depth (`providers.py` coverage) over new

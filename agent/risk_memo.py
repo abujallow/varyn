@@ -412,7 +412,12 @@ def generate_narrative(
                 model,
             )
         return narrative, "available", model
-    except Exception:
+    except Exception as exc:
+        get_audit_logger().log(
+            "risk_memo_narrative_failed",
+            reason="Analyst narrative generation failed; falling back to the deterministic-only memo.",
+            details={"company": report.get("company"), "error_type": type(exc).__name__},
+        )
         return unavailable, "unavailable", None
 
 
@@ -798,7 +803,12 @@ def build_download_artifacts(
                     "size_bytes": len(content),
                 }
             )
-        except Exception:
+        except Exception as exc:
+            get_audit_logger().log(
+                "risk_memo_artifact_encoding_failed",
+                reason="A memo artifact could not be base64-encoded for browser download; other formats continue.",
+                details={"format": format_name, "error_type": type(exc).__name__},
+            )
             errors.append(f"{format_name.upper()} content could not be prepared for browser download.")
     return artifacts, errors
 
