@@ -8,13 +8,11 @@ import {
   selectPreferredVoices,
   splitForSpeech,
 } from "./speech";
-import {
-  buildMarketTickerItems,
-  formatMarketChange,
-  formatMarketPrice,
-  formatMarketTimestamp,
-  isTickerAvailable,
-} from "./marketTicker";
+import { buildMarketTickerItems, formatMarketTimestamp } from "./marketTicker";
+import OrbitalField from "../components/OrbitalField";
+import MarketTicker from "../components/MarketTicker";
+import SystemPanel from "../components/SystemPanel";
+import AnalysisPanel from "../components/AnalysisPanel";
 
 const initialEvents = [
   { type: "system", label: "Varyn online" },
@@ -22,24 +20,6 @@ const initialEvents = [
   { type: "system", label: "Local agent connecting" },
   { type: "risk", label: "Risk engine active" },
 ];
-
-const STARFIELD_STARS = Array.from({ length: 400 }, (_, index) => {
-  const pairIndex = Math.floor(index / 2);
-  const isLeft = index % 2 === 0;
-  const left = isLeft
-    ? 4 + ((pairIndex * 23) % 43)
-    : 54 + ((pairIndex * 19) % 43);
-  const top = 5 + ((pairIndex * (isLeft ? 31 : 37)) % 90);
-
-  return {
-    id: `star-${index + 1}`,
-    style: {
-      animationDelay: `-${(index * 0.06).toFixed(2)}s`,
-      left: `${left}%`,
-      top: `${top}%`,
-    },
-  };
-});
 
 const MAX_OPEN_MIC_AUTO_RESTARTS = 6;
 const OPEN_MIC_RESTART_BACKOFF_MS = [280, 320, 450, 700, 1100, 1800];
@@ -75,27 +55,6 @@ function formatFileSize(bytes) {
   if (!bytes) return "0 KB";
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function sourceStatusLabel(source) {
-  if (!source) return "Awaiting";
-  if (source.enabled === false) return "Disabled";
-  const status = String(source.status || "unknown").toLowerCase();
-  if (status === "active") return "Active";
-  if (status === "degraded") return "Degraded";
-  if (status === "unavailable") return "Unavailable";
-  return "Awaiting";
-}
-
-function sourceHealthTitle(label, source) {
-  if (!source) return `${label}: awaiting first source check`;
-  const lastCheck = source.last_failed_pull || source.last_successful_pull;
-  const details = [
-    `${label}: ${sourceStatusLabel(source)}`,
-    lastCheck ? `last checked ${new Date(lastCheck).toLocaleString()}` : null,
-    source.last_error || null,
-  ].filter(Boolean);
-  return details.join(". ");
 }
 
 function voiceErrorMessage(error) {
@@ -1530,7 +1489,6 @@ export default function Home() {
     processCommand(command);
   };
 
-  const riskModules = activeAnalysis?.modules || [];
   const marketTickerItems = useMemo(
     () => buildMarketTickerItems(heartbeatState.marketSnapshot.symbols, heartbeatState.watchlist),
     [heartbeatState.marketSnapshot.symbols, heartbeatState.watchlist],
@@ -1564,128 +1522,17 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="market-ticker" aria-label="Live heartbeat market watch">
-          <div className="market-ticker-status">
-            <span>Online</span>
-            <small>{heartbeatState.proactivePaused ? "Proactive paused" : heartbeatState.running ? "Scanning" : "Market watch"}</small>
-          </div>
-          <div className="market-ticker-window">
-            <div className="market-ticker-track">
-              {[0, 1].map((cycleIndex) => (
-                <div className="market-ticker-cycle" aria-hidden={cycleIndex === 1} key={cycleIndex}>
-                  {marketTickerItems.map((item) => {
-                    const change = Number(item.change_percent);
-                    const changeTone = Number.isFinite(change) ? (change > 0 ? "up" : change < 0 ? "down" : "flat") : "missing";
-                    const quoteTime = formatMarketTimestamp(item.sampled_at);
-                    return (
-                      <article
-                        className={`market-ticker-item ${item.stale ? "is-stale" : ""}`}
-                        key={`${cycleIndex}-${item.symbol}`}
-                        title={item.stale
-                          ? `${item.symbol} last-known value${quoteTime ? ` as of ${quoteTime}` : ""}; latest refresh unavailable`
-                          : `${item.symbol} latest cached heartbeat value`}
-                      >
-                        <strong>{item.symbol}</strong>
-                        <span className="ticker-price">{isTickerAvailable(item) ? formatMarketPrice(item.price) : "Unavailable"}</span>
-                        <span className={`ticker-change is-${changeTone}`}>
-                          {isTickerAvailable(item) ? formatMarketChange(item.change_percent) : "--"}
-                        </span>
-                      </article>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-          <time className="market-ticker-time" dateTime={heartbeatState.marketSnapshot.sampledAt || undefined}>
-            {marketTimestamp ? `As of ${marketTimestamp}` : "Awaiting market scan..."}
-          </time>
-        </section>
+        <MarketTicker
+          proactivePaused={heartbeatState.proactivePaused}
+          running={heartbeatState.running}
+          items={marketTickerItems}
+          timestamp={marketTimestamp}
+          sampledAt={heartbeatState.marketSnapshot.sampledAt}
+        />
 
-        <aside className="system-panel left-panel" aria-label="System monitor">
-          <div className="panel-heading">Sys Monitor</div>
-          <div className="telemetry-note">
-            {telemetry.source === "psutil"
-              ? "Live local telemetry"
-              : telemetry.source === "unavailable"
-                ? "Telemetry unavailable"
-                : "Telemetry connecting"}
-          </div>
-          <div className="status-readout" aria-live="polite">
-            <span>Runtime</span>
-            <strong>{status}</strong>
-          </div>
-          {[
-            ["CPU", typeof telemetry.cpu === "number" ? `${telemetry.cpu}%` : "N/A", typeof telemetry.cpu === "number" ? telemetry.cpu : 0, "cyan"],
-            ["MEM", typeof telemetry.mem === "number" ? `${telemetry.mem}%` : "N/A", typeof telemetry.mem === "number" ? telemetry.mem : 0, typeof telemetry.mem === "number" && telemetry.mem > 62 ? "amber" : "cyan"],
-            ["NET", typeof telemetry.net === "number" ? `${telemetry.net}KB/s` : "N/A", telemetry.netLevel, "green"],
-          ].map(([label, value, level, tone]) => (
-            <div className={`metric-row metric-${tone}`} key={label}>
-              <div>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </div>
-              <i style={{ "--level": `${level}%` }} />
-            </div>
-          ))}
-          <div className="mini-readout">
-            <span>UP</span>
-            <strong>{telemetry.uptime}</strong>
-            <span>PROC</span>
-            <strong>{telemetry.proc}</strong>
-            <span>OS</span>
-            <strong>{telemetry.os}</strong>
-          </div>
-          <div className="panel-heading data-health-heading">Data Health</div>
-          <div className={`source-health source-${sourceHealth.overall}`}>
-            {[
-              ["yfinance", sourceHealth.sources.yfinance],
-              ["SEC EDGAR", sourceHealth.sources.sec_edgar],
-              ["FRED", sourceHealth.sources.fred],
-              ["CFPB", sourceHealth.sources.cfpb],
-            ].map(([label, source]) => (
-              <div
-                className={`source-health-row source-status-${source?.status || "unknown"}`}
-                key={label}
-                title={sourceHealthTitle(label, source)}
-              >
-                <span>{label}</span>
-                <strong>{sourceStatusLabel(source)}</strong>
-                <small>{source ? `${Math.round((1 - Number(source.error_rate || 0)) * 100)}%` : "--"}</small>
-              </div>
-            ))}
-          </div>
-          <div className="panel-heading status-heading">Agent Status</div>
-          {[
-            ["Agent", system.agent],
-            ["Provider", system.provider],
-            ["Model", system.model],
-            ["Backend", system.backend],
-            ["Memory", system.memory],
-            ["Risk", system.risk],
-            ["Market", system.market],
-            ["Heartbeat", system.heartbeat],
-            ["Voice", system.voice],
-          ].map(([label, value]) => (
-            <div className="status-row" key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-            </div>
-          ))}
-          <div className="clearance-stack">
-            <span>AI Core Active</span>
-            <span>Local Agent 8788</span>
-            <span>Protocol Varyn</span>
-          </div>
-        </aside>
+        <SystemPanel telemetry={telemetry} status={status} sourceHealth={sourceHealth} system={system} />
 
-        <div className="orbital-field" aria-hidden="true">
-          {STARFIELD_STARS.map((star) => (
-            <span className="star" key={star.id} style={star.style} />
-          ))}
-          <span className="sweep-line sweep-a" />
-          <span className="sweep-line sweep-b" />
-        </div>
+        <OrbitalField />
 
         <div className="vital-core">
           <div className="orbital-core-frame">
@@ -1866,76 +1713,7 @@ export default function Home() {
           </aside>
         )}
 
-        {activeAnalysis && (
-          <aside className="analysis-panel" aria-live="polite">
-            <div className="analysis-header">
-              <div>
-                <div className="panel-label">Generated analysis</div>
-                <h1>{activeAnalysis.title}</h1>
-              </div>
-              <button className="icon-button" onClick={dismissAnalysis} type="button" aria-label="Dismiss analysis">
-                X
-              </button>
-            </div>
-            <p>{activeAnalysis.summary}</p>
-            <div className="analysis-meta">
-              {activeAnalysis.score_available === true && activeAnalysis.overall_score != null && (
-                <span>Overall {activeAnalysis.overall_score}</span>
-              )}
-              {activeAnalysis.source && <span>{activeAnalysis.source}</span>}
-              {activeAnalysis.location && <span>{activeAnalysis.location}</span>}
-              {activeAnalysis.data_confidence && <span>Data confidence: {activeAnalysis.data_confidence}</span>}
-            </div>
-            {activeAnalysis.score_available === false && (
-              <div className="score-unavailable-note">
-                <strong>Insufficient data to calculate a reliable score.</strong>
-                {activeAnalysis.data_gaps?.length > 0 && (
-                  <p>Missing: {activeAnalysis.data_gaps.join(", ")}</p>
-                )}
-              </div>
-            )}
-            {activeAnalysis.data_points?.length > 0 && (
-              <div className="market-data-grid">
-                {activeAnalysis.data_points.map((point) => (
-                  <article key={point.symbol}>
-                    <strong>{point.symbol}</strong>
-                    <span>{point.source}</span>
-                    <p>Price: {point.price}</p>
-                    <p>Move: {point.change_percent}%</p>
-                    <p>Beta: {point.beta}</p>
-                    <p>Debt/Equity: {point.debt_to_equity}</p>
-                    <p>Current ratio: {point.current_ratio}</p>
-                  </article>
-                ))}
-              </div>
-            )}
-            <div className="module-grid">
-              {riskModules.map((module) => (
-                <article className="risk-module" key={module.title}>
-                  <span>{module.score != null ? module.score : module.level || "Unrated"}</span>
-                  <strong>{module.title}</strong>
-                  <p>{module.detail}</p>
-                </article>
-              ))}
-            </div>
-            {activeAnalysis.drivers?.length > 0 && (
-              <div className="driver-list">
-                <strong>Key drivers</strong>
-                {activeAnalysis.drivers.map((driver) => (
-                  <span key={driver}>{driver}</span>
-                ))}
-              </div>
-            )}
-            <div className="action-list">
-              {(activeAnalysis.actions || []).map((action) => (
-                <span key={action}>{action}</span>
-              ))}
-            </div>
-            <button className="control-button clear-analysis" onClick={dismissAnalysis} type="button">
-              Clear analysis
-            </button>
-          </aside>
-        )}
+        {activeAnalysis && <AnalysisPanel analysis={activeAnalysis} onDismiss={dismissAnalysis} />}
 
         <form className="command-deck" onSubmit={submitCommand}>
           <div className="command-deck-header">

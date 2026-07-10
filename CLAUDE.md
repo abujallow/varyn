@@ -18,9 +18,13 @@ file is the condensed, code-facing version of that history.
 
 ## Architecture
 
-- **Frontend**: Next.js (App Router), single HUD in `src/app/page.js` (~2,050 lines,
-  monolithic — see "Known Issues" below). Voice via Web Speech API, pure helpers
-  extracted to `src/app/speech.js` and `src/app/marketTicker.js`.
+- **Frontend**: Next.js (App Router), single HUD orchestrated from `src/app/page.js`
+  (~1,830 lines — still the owner of all state/effects/refs/API calls, see "Known
+  Issues" below). Voice via Web Speech API, pure helpers extracted to
+  `src/app/speech.js`, `src/app/marketTicker.js`, and `src/app/systemHealth.js`.
+  Four presentation-only components extracted to `src/components/` (Mini Update 2):
+  `OrbitalField`, `MarketTicker`, `SystemPanel`, `AnalysisPanel` — all receive props
+  only, own no state, and are rendered by `Home` in `page.js`.
 - **Backend**: Python FastAPI in `agent/`, entry point `agent/main.py`. Tool-calling
   agent core in `agent/agent_core.py`, tools in `agent/tools/`.
 - **Frontend deploy**: Vercel, production domain `https://varyn-ai.vercel.app`.
@@ -69,7 +73,7 @@ asked, never log or print the proxy secret / auth secret / owner access key or h
 
 ## Test Suite
 
-**171 pytest tests** (`agent/tests/`) + **46 Vitest tests** (`src/**/__tests__/`).
+**171 pytest tests** (`agent/tests/`) + **56 Vitest tests** (`src/**/__tests__/`).
 All network calls (OpenRouter, Gemini, yfinance company search, Upstash, Vercel, Render)
 are mocked — the suite must never make live external calls.
 
@@ -91,6 +95,21 @@ Per-file backend counts: `test_risk_routing.py` (28), `test_risk_memo.py` (18),
 `test_files.py` (4), `test_audit.py` (3).
 
 ## Recent Fixes (most recent first)
+
+**Mini Update 2 — incremental frontend decomposition** — Extracted four presentation-only
+components from `src/app/page.js` into `src/components/`: `OrbitalField.jsx` (static
+starfield background), `MarketTicker.jsx` (heartbeat market-watch row), `SystemPanel.jsx`
+(telemetry/data-health/agent-status left panel), `AnalysisPanel.jsx` (risk-analysis
+results panel, including the `score_available` gate). Also extracted the pure
+`sourceStatusLabel()`/`sourceHealthTitle()` helpers to a new `src/app/systemHealth.js`
+(same pattern as `marketTicker.js`), with 10 new unit tests. All four components receive
+props only and own no state/effects/refs — `Home` in `page.js` still owns all
+orchestration, API calls, voice state machine, and callbacks; only the JSX was moved,
+verbatim, not rewritten. `page.js` went from ~2,050 to ~1,830 lines (~11% reduction).
+Voice controls, the right-side activity/upload panel, and the owner-access/confirmation
+flows were deliberately left in `page.js` — too tightly coupled to refs and callbacks to
+extract as pure presentation without redesigning state. No production defect found; no
+behavioral, visual, or API change.
 
 **Mini Update 1 — provider HTTP-layer test coverage** — Added `agent/tests/test_providers_http.py`
 (60 tests) covering the previously-untested execution path in `agent/providers.py`:
@@ -168,10 +187,13 @@ already covered.
   Update 1** (see Recent Fixes above); `call_openrouter`, `call_openrouter_stream`,
   and all response-parsing functions now have dedicated coverage in
   `agent/tests/test_providers_http.py`.
-- **`src/app/page.js` is a 2,049-line file, ~1,900-line single component** (32
-  `useState`, 27 `useCallback`, 43 `useRef`). No `src/components/` decomposition
-  exists. Real technical debt, but only worth splitting incrementally as features are
-  touched anyway — not as a standalone refactor project (regression risk).
+- **`src/app/page.js` is still a ~1,830-line single component** (32 `useState`, 27
+  `useCallback`, 43 `useRef` — unchanged by Mini Update 2, which only moved
+  presentation JSX out, not state). Four presentation components now live in
+  `src/components/` (see Recent Fixes above), but voice controls, the activity/upload
+  panel, and owner/confirmation flows are still inline and tightly coupled. Continue
+  splitting incrementally as features are touched — not as a standalone refactor
+  project (regression risk).
 - **5 of 10 direct npm dependencies appear unused**: `framer-motion`,
   `@emailjs/browser`, `emailjs-com` (abandoned upstream), `react-countup`,
   `react-type-animation`. Safe, low-priority cleanup.
@@ -235,3 +257,5 @@ already covered.
   `build_risk_analysis()` split.
 - `agent/tests/`, `src/**/__tests__/` — read existing tests before adding new ones,
   to match established mocking patterns (temp dirs, no live network).
+- `src/components/` — presentation-only HUD components extracted from `page.js`
+  (Mini Update 2); each takes props only and owns no state.
