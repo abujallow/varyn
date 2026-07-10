@@ -351,8 +351,8 @@ Render supplies `PORT` automatically. `FRONTEND_URL` and `PYTHON_VERSION` are su
 ## Automated Reliability Tests
 
 Varyn now includes a persistent automated reliability suite covering the safety-critical logic that
-previously required manual verification. The current suite contains 101 tests: 74 backend pytest
-tests and 27 frontend Vitest tests.
+previously required manual verification. The current suite contains 217 tests: 171 backend pytest
+tests and 46 frontend Vitest tests.
 
 Coverage includes one-time confirmation enforcement, session and uploaded-file isolation,
 prompt-injection detection, upload size/type restrictions, owner bypass and rate-limit regression

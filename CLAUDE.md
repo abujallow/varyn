@@ -69,9 +69,9 @@ asked, never log or print the proxy secret / auth secret / owner access key or h
 
 ## Test Suite
 
-**111 pytest tests** (`agent/tests/`) + **46 Vitest tests** (`src/**/__tests__/`).
-All network calls (OpenRouter, yfinance company search, Upstash, Vercel, Render) are
-mocked — the suite must never make live external calls.
+**171 pytest tests** (`agent/tests/`) + **46 Vitest tests** (`src/**/__tests__/`).
+All network calls (OpenRouter, Gemini, yfinance company search, Upstash, Vercel, Render)
+are mocked — the suite must never make live external calls.
 
 Run:
 ```bash
@@ -85,11 +85,27 @@ npm run build
 ```
 
 Per-file backend counts: `test_risk_routing.py` (28), `test_risk_memo.py` (18),
-`test_providers.py` (14 — see gap below), `test_memory.py` (10), `test_safety.py` (10),
+`test_providers_http.py` (60 — HTTP/retry/fallback/streaming layer, added Mini Update 1),
+`test_providers.py` (14 — pure helper math), `test_memory.py` (10), `test_safety.py` (10),
 `test_risk.py` (9), `test_heartbeat_market_snapshot.py` (9), `test_security.py` (6),
 `test_files.py` (4), `test_audit.py` (3).
 
 ## Recent Fixes (most recent first)
+
+**Mini Update 1 — provider HTTP-layer test coverage** — Added `agent/tests/test_providers_http.py`
+(60 tests) covering the previously-untested execution path in `agent/providers.py`:
+`post_json`/`call_openrouter` (success, `HTTPError`, `URLError`, `TimeoutError`),
+`call_openrouter_stream` (SSE token/tool-call delta parsing, malformed lines,
+mid-stream errors), `parse_openrouter_response`, `parse_native_tool_calls`,
+`parse_structured_actions`, `parse_tagged_tool_calls`, `validated_model_chain`
+(free-suffix + catalog filtering), `call_gemini`, and the full `complete()` /
+`stream_complete()` retry-and-fallback orchestration (transient vs. non-transient
+failures, retry-budget exhaustion, chain-to-Gemini, chain-to-local-offline, the
+streaming "interrupted after partial tokens" path). All `urllib.request` calls are
+mocked; no production code changed. No production defect was found — every existing
+behavior held under test. Dedicated `SecretRedactionTests` confirm the API key never
+appears in `ProviderResult.error`, replies, or the audit log across the real
+`call_openrouter`/`post_json` exception-building path.
 
 **Market-watch/heartbeat regression** (commit `28a0bc0`) — The single-entity scoring
 gate below (correctly) started returning `overall_score: None` for the heartbeat's
@@ -148,12 +164,10 @@ already covered.
 
 ## Latest Comprehensive Review Findings (not yet actioned)
 
-- **`agent/providers.py` (941 lines) has almost no direct test coverage.** The 14
-  existing tests only cover pure helpers (backoff math, free-model detection).
-  `call_openrouter`, `call_openrouter_stream`, and all response-parsing functions are
-  untested despite being the most-executed code in the system. **Highest-priority
-  next improvement if asked to strengthen tests** — mock `urllib.request`, never hit
-  real OpenRouter.
+- ~~`agent/providers.py` had almost no direct test coverage~~ — **resolved in Mini
+  Update 1** (see Recent Fixes above); `call_openrouter`, `call_openrouter_stream`,
+  and all response-parsing functions now have dedicated coverage in
+  `agent/tests/test_providers_http.py`.
 - **`src/app/page.js` is a 2,049-line file, ~1,900-line single component** (32
   `useState`, 27 `useCallback`, 43 `useRef`). No `src/components/` decomposition
   exists. Real technical debt, but only worth splitting incrementally as features are
