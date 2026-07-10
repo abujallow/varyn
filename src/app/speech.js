@@ -11,6 +11,13 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+const DAY_ORDINAL_WORDS = [
+  "", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
+  "eleventh", "twelfth", "thirteenth", "fourteenth", "fifteenth", "sixteenth", "seventeenth", "eighteenth",
+  "nineteenth", "twentieth", "twenty-first", "twenty-second", "twenty-third", "twenty-fourth", "twenty-fifth",
+  "twenty-sixth", "twenty-seventh", "twenty-eighth", "twenty-ninth", "thirtieth", "thirty-first",
+];
+
 export const DEFAULT_PREFERRED_VOICES = [
   "Microsoft Andrew Multilingual Online (Natural)",
   "Microsoft Ava Multilingual Online (Natural)",
@@ -87,11 +94,17 @@ function numberToWords(value, maximumDecimals = 2) {
   return `${rounded < 0 ? "minus " : ""}${words.join(" ")}`.replace(/^minus minus /, "minus ");
 }
 
-function spokenOrdinal(value) {
-  const remainder100 = value % 100;
-  if (remainder100 >= 11 && remainder100 <= 13) return `${value}th`;
-  const suffix = { 1: "st", 2: "nd", 3: "rd" }[value % 10] || "th";
-  return `${value}${suffix}`;
+function yearToWords(year) {
+  const absYear = Math.abs(Math.trunc(year));
+  if (absYear >= 1000 && absYear < 10000 && absYear % 100 !== 0) {
+    const firstPart = Math.floor(absYear / 100);
+    const secondPart = absYear % 100;
+    const secondWords = secondPart < 10
+      ? `oh ${SMALL_NUMBERS[secondPart]}`
+      : underThousandToWords(secondPart);
+    return `${underThousandToWords(firstPart)} ${secondWords}`;
+  }
+  return integerToWords(year);
 }
 
 function formatSpokenDate(yearValue, monthValue, dayValue) {
@@ -107,7 +120,7 @@ function formatSpokenDate(yearValue, monthValue, dayValue) {
     || date.getUTCDate() !== day
   ) return null;
 
-  return `${MONTH_NAMES[month - 1]} ${spokenOrdinal(day)}, ${year}`;
+  return `${MONTH_NAMES[month - 1]} ${DAY_ORDINAL_WORDS[day]}, ${yearToWords(year)}`;
 }
 
 export function sanitizeForSpeech(text) {
@@ -132,13 +145,13 @@ export function sanitizeForSpeech(text) {
       /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\b/gi,
       "updated recently",
     )
-    .replace(/\b(\d{4})[-/](\d{2})[-/](\d{2})\b/g, (match, year, month, day) => (
+    .replace(/(?<!\/)\b(\d{4})[-/](\d{2})[-/](\d{2})\b/g, (match, year, month, day) => (
       formatSpokenDate(year, month, day) || match
     ))
-    .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g, (match, month, day, year) => (
+    .replace(/(?<!\/)\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g, (match, month, day, year) => (
       formatSpokenDate(year, month, day) || match
     ))
-    .replace(/\b(\d{1,2})-(\d{1,2})-(\d{4})\b/g, (match, month, day, year) => (
+    .replace(/(?<!\/)\b(\d{1,2})-(\d{1,2})-(\d{4})\b/g, (match, month, day, year) => (
       formatSpokenDate(year, month, day) || match
     ))
     .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi, " ")

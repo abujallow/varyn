@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
@@ -10,6 +10,23 @@ from heartbeat import (
     evaluate_watched_symbol,
     heartbeat_risk_score,
 )
+
+
+_audit_patcher = None
+
+
+def setUpModule():
+    # add_condition_notice() calls the real get_audit_logger() singleton directly
+    # (heartbeat.py:1070) rather than an injected instance. Several tests here drive
+    # risk scores/moves past notice thresholds, which would otherwise append real
+    # entries to the local dev agent/data/audit/varyn-audit.jsonl file.
+    global _audit_patcher
+    _audit_patcher = patch("heartbeat.get_audit_logger", return_value=MagicMock())
+    _audit_patcher.start()
+
+
+def tearDownModule():
+    _audit_patcher.stop()
 
 
 DATA_LAYER_CONFIG = {

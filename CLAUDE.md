@@ -74,7 +74,7 @@ asked, never log or print the proxy secret / auth secret / owner access key or h
 
 ## Test Suite
 
-**194 pytest tests** (`agent/tests/`) + **56 Vitest tests** (`src/**/__tests__/`).
+**194 pytest tests** (`agent/tests/`) + **66 Vitest tests** (`src/**/__tests__/`).
 All network calls (OpenRouter, Gemini, yfinance company search, Upstash, Vercel, Render)
 are mocked — the suite must never make live external calls.
 
@@ -89,22 +89,69 @@ npm run lint
 npm run build
 ```
 
-Per-file backend counts: `test_risk_routing.py` (28), `test_risk_memo.py` (22 — +4
-Mini Update 4), `test_providers_http.py` (60 — HTTP/retry/fallback/streaming layer,
-added Mini Update 1), `test_main_routes.py` (13 — new Mini Update 4, HTTP-boundary
-`TestClient` coverage), `test_providers.py` (14 — pure helper math), `test_memory.py`
-(10), `test_safety.py` (10), `test_security.py` (12 — +6 Mini Update 4), `test_risk.py`
-(9), `test_heartbeat_market_snapshot.py` (9), `test_files.py` (4), `test_audit.py` (3).
+Per-file backend counts: `test_risk_routing.py` (28), `test_risk_memo.py` (22),
+`test_providers_http.py` (60 — HTTP/retry/fallback/streaming layer, added Mini Update 1),
+`test_main_routes.py` (13 — Mini Update 4, HTTP-boundary `TestClient` coverage),
+`test_providers.py` (14 — pure helper math), `test_memory.py` (10), `test_safety.py`
+(10), `test_security.py` (12), `test_risk.py` (9), `test_heartbeat_market_snapshot.py`
+(9 — audit-isolated as of Mini Update 5, see below), `test_files.py` (4),
+`test_audit.py` (3). Frontend `speech.test.js` (27 — +10 Mini Update 5, spoken-date
+coverage).
 
-**Known pre-existing test-isolation gap (not introduced by Mini Update 4, not yet
-fixed):** `test_heartbeat_market_snapshot.py` exercises heartbeat notice-creation
-logic that calls the real module-level `get_audit_logger()` singleton
-(`heartbeat.py:1070`) without patching it to an isolated path, so a full `pytest
-tests/ -q` run appends real entries to the local gitignored
-`agent/data/audit/varyn-audit.jsonl` dev file. Harmless (local dev data only, never
-committed, never hosted state), but worth isolating in a future pass.
+**Known pre-existing test-isolation gap (still open, not yet fixed):**
+`test_safety.py`'s `make_rails()` helper constructs `SafetyRails` without an injected
+`audit=`, so it falls back to the real module-level `get_audit_logger()` singleton
+(`safety.py:28`) and a full `pytest tests/ -q` run appends real entries to the local
+gitignored `agent/data/audit/varyn-audit.jsonl` dev file — the same class of issue as
+the heartbeat one Mini Update 5 fixed (a constructor/call site defaulting to the real
+singleton instead of an injected instance), just in a different file. Harmless (local
+dev data only, never committed, never hosted state), discovered while verifying Mini
+Update 5, left unfixed since it was outside that update's stated scope
+(`test_heartbeat_market_snapshot.py` specifically).
 
 ## Recent Fixes (most recent first)
+
+**Mini Update 5 — final polish: spoken dates, favicon verification, heartbeat test
+isolation** — Three parts:
+
+1. **Favicon: verified complete, no changes made.** `src/app/{favicon.ico, icon.png,
+   apple-icon.png}` (16/32/48 ICO, 512×512 PNG, 180×180 PNG) were already correctly
+   wired via Next.js App Router's automatic icon convention and confirmed live in a
+   browser (`<link rel="icon">`/`<link rel="apple-touch-icon">` all present, all
+   assets 200). This was already finalized in an earlier commit
+   (`862cd67`, "Finalize Varyn favicon and command system title") — the "unfinished"
+   note in this file's Known Limitations was simply stale and has been removed.
+2. **Natural spoken dates (`src/app/speech.js`).** `formatSpokenDate()` previously
+   produced digit-form output (`"July 9th, 2026"`). Now produces full word form
+   (`"July ninth, twenty twenty six"`): a fixed `DAY_ORDINAL_WORDS` lookup (1–31,
+   no algorithm needed) replaces the old digit-suffix `spokenOrdinal()` (removed,
+   now dead code); a new `yearToWords()` splits 4-digit years into two word-pairs
+   (round-hundred years like 2000/1900 fall back to plain cardinal reading — a
+   documented simplification, since Varyn's real dates are modern financial/
+   regulatory dates, not historical round-century references). Still only the same
+   4 existing numeric formats (`YYYY-MM-DD`, `YYYY/MM/DD`, `MM/DD/YYYY`,
+   `MM-DD-YYYY`) — no new format support, no general date parser. Also added a
+   `(?<!\/)` guard to all three date regexes after finding a real (if narrow) gap:
+   a bare, non-markdown URL with a date-like path (e.g.
+   `https://sec.gov/2026/07/09/filing`) would previously have had its path
+   segment mangled into a spoken date. Speech-only — visible text, backend
+   responses, stored messages, citations, and URLs are untouched. 10 new tests in
+   `speech.test.js`; one pre-existing assertion updated since it asserted the old
+   digit-year output the whole point of this change was to replace.
+3. **Heartbeat test audit-log isolation (`agent/tests/test_heartbeat_market_snapshot.py`).**
+   `add_condition_notice()` in `heartbeat.py` calls the real `get_audit_logger()`
+   singleton directly rather than an injected instance; one test in this file drives
+   a risk score past the notice threshold and was appending real entries to the
+   local `agent/data/audit/varyn-audit.jsonl`. Fixed with `setUpModule()`/
+   `tearDownModule()` patching `heartbeat.get_audit_logger` to a `MagicMock` for the
+   whole file — test-only change, no production code touched. Verified: the real
+   audit file's size and mtime are now provably unchanged by this file, both run
+   alone and as part of the full suite. **Found but not fixed (out of this update's
+   scope):** an equivalent issue in `test_safety.py` — see Test Suite section above.
+
+No provider behavior, scoring, security, session isolation, confirmation gates, rate
+limits, persistence, or visible/backend response content changed. `page.js` was not
+touched.
 
 **Mini Update 4 — HTTP route-boundary tests, exception logging, and a real
 owner-gating fix** — Three parts:
@@ -229,7 +276,6 @@ already covered.
   available" for generic corporate ratios (deposits, loan-to-deposit, Tier 1 capital,
   NIM would need their own mapping). Main open data gap, understood, not urgent.
 - No news/sentiment data layer — deliberately deferred, not accidental.
-- Spoken-date formatting and the multi-size favicon export are unfinished/in-progress.
 - OCC and Federal Reserve enforcement-action data are documented options only, not built.
 - The "private differentiator" stays out of this shared codebase by design — do not
   try to infer or reconstruct it.

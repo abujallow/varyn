@@ -42,15 +42,82 @@ describe("sanitizeForSpeech", () => {
     expect(out).not.toContain("%");
   });
 
-  it("converts numeric dates to spoken month/day/year", () => {
+  it("converts numeric dates to spoken month/day/year, with the year read as words", () => {
     const out = sanitizeForSpeech("Filed on 2026-03-15");
     expect(out).toContain("March");
-    expect(out).toContain("2026");
+    expect(out).toContain("fifteenth");
+    expect(out).not.toContain("2026");
+    expect(out.toLowerCase()).toContain("twenty");
   });
 
   it("returns empty string for falsy input", () => {
     expect(sanitizeForSpeech("")).toBe("");
     expect(sanitizeForSpeech(null)).toBe("");
+  });
+});
+
+describe("sanitizeForSpeech spoken dates", () => {
+  it("reads an ISO date fully as words (month name, word ordinal, word year)", () => {
+    const out = sanitizeForSpeech("Report generated 2026-07-09.");
+    expect(out).toContain("July");
+    expect(out).toContain("ninth");
+    expect(out.toLowerCase()).toContain("twenty");
+    expect(out.toLowerCase()).toContain("six");
+    expect(out).not.toContain("2026");
+    expect(out).not.toContain("07-09");
+  });
+
+  it("leaves an already-natural written date untouched", () => {
+    const out = sanitizeForSpeech("Filed Jul 9, 2026 with the SEC.");
+    expect(out).toContain("Jul 9");
+  });
+
+  it("converts a date at the very end of a sentence", () => {
+    const out = sanitizeForSpeech("The filing closed on 2026-01-31.");
+    expect(out).toContain("January");
+    expect(out).toContain("thirty-first");
+  });
+
+  it("converts multiple dates in one response independently", () => {
+    const out = sanitizeForSpeech("Opened 2026-02-01 and closed 2026-02-28.");
+    expect(out).toContain("first");
+    expect(out).toContain("twenty-eighth");
+    expect(out).not.toContain("2026-02");
+  });
+
+  it("leaves an invalid calendar date unchanged", () => {
+    const out = sanitizeForSpeech("Reference code 2026-13-45 was logged.");
+    expect(out).toContain("2026-13-45");
+  });
+
+  it("converts a valid leap day", () => {
+    const out = sanitizeForSpeech("Reported on 2024-02-29.");
+    expect(out).toContain("February");
+    expect(out).toContain("twenty-ninth");
+  });
+
+  it("leaves an invalid leap day (non-leap year) unchanged", () => {
+    const out = sanitizeForSpeech("Reported on 2023-02-29.");
+    expect(out).toContain("2023-02-29");
+  });
+
+  it("does not alter a bare four-digit year with no month/day", () => {
+    const out = sanitizeForSpeech("Guidance covers fiscal year 2026 only.");
+    expect(out).toContain("2026");
+  });
+
+  it("does not alter an unrelated decimal number", () => {
+    const out = sanitizeForSpeech("The reading was 10.09 today.");
+    expect(out).not.toContain("July");
+    expect(out).not.toContain("October");
+  });
+
+  it("does not alter a date-like sequence embedded in a bare URL path", () => {
+    const out = sanitizeForSpeech("See https://www.sec.gov/2026/07/09/filing for the source.");
+    expect(out).toContain("2026");
+    expect(out).toContain("07");
+    expect(out).toContain("09");
+    expect(out).not.toContain("July ninth");
   });
 });
 
